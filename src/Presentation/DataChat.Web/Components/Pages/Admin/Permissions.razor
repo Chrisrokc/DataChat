@@ -1,0 +1,231 @@
+@page "/admin/permissions"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IApplicationDbContext DbContext
+@inject IToastService ToastService
+@inject ILogger<Permissions> Logger
+
+<PageTitle>Permissions</PageTitle>
+
+<h4 style="margin-bottom: 16px;">Data Source Permissions</h4>
+
+<FluentCard Style="padding: 16px;">
+    <FluentMessageBar Title="Info" Intent="@MessageIntent.Info" Style="margin-bottom: 16px;">
+        Configure which users can access each data source. Users with access can query documents
+        and use RAG features for those data sources.
+    </FluentMessageBar>
+
+    @if (_isLoading)
+    {
+        <FluentProgress />
+    }
+    else if (!_dataSources.Any())
+    {
+        <FluentMessageBar Title="Warning" Intent="@MessageIntent.Warning">
+            No data sources configured. <a href="admin/datasources">Create a data source</a> first.
+        </FluentMessageBar>
+    }
+    else if (!_users.Any())
+    {
+        <FluentMessageBar Title="Warning" Intent="@MessageIntent.Warning">
+            No users found.
+        </FluentMessageBar>
+    }
+    else
+    {
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--neutral-stroke-rest);">
+                        <th style="text-align: left; padding: 12px; min-width: 200px;">Data Source</th>
+                        @foreach (var user in _users)
+                        {
+                            <th style="text-align: center; padding: 12px; min-width: 100px;">
+                                <span style="font-size: 12px;">@user.Username</span>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ds in _dataSources)
+                    {
+                        <tr style="border-bottom: 1px solid var(--neutral-stroke-rest);">
+                            <td style="padding: 12px;">
+                                <strong>@ds.Name</strong>
+                                <br /><span style="font-size: 12px; color: gray;">@ds.Type</span>
+                            </td>
+                            @foreach (var user in _users)
+                            {
+                                <td style="text-align: center; padding: 12px;">
+                                    <FluentCheckbox Value="HasPermission(user.Id, ds.Id)"
+                                                   ValueChanged="@((bool value) => TogglePermission(user.Id, ds.Id, value))" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--neutral-stroke-rest);" />
+
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+                <h6 style="margin-bottom: 8px;">Quick Actions</h6>
+                <div style="display: flex; gap: 8px;">
+                    <FluentButton Appearance="Appearance.Outline" OnClick="GrantAllToAdmins">
+                        Grant All to Admins
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Outline" OnClick="ClearAllPermissions">
+                        Clear All
+                    </FluentButton>
+                </div>
+            </div>
+            <div>
+                <FluentButton Appearance="Appearance.Accent" OnClick="SavePermissions" Disabled="_isSaving">
+                    @if (_isSaving)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                    }
+                    Save Changes
+                </FluentButton>
+            </div>
+        </div>
+    }
+</FluentCard>
+
+@code {
+    private List<DataSource> _dataSources = new();
+    private List<User> _users = new();
+    private HashSet<(Guid UserId, Guid DataSourceId)> _permissions = new();
+    private HashSet<(Guid UserId, Guid DataSourceId)> _originalPermissions = new();
+    private bool _isLoading = true;
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        try
+        {
+            _dataSources = await DbContext.DataSources
+                .Where(ds => ds.IsActive)
+                .OrderBy(ds => ds.Name)
+                .ToListAsync();
+
+            _users = await DbContext.Users
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Where(u => u.IsActive)
+                .OrderBy(u => u.Username)
+                .ToListAsync();
+
+            var existingPermissions = await DbContext.UserDataSourcePermissions.ToListAsync();
+            _permissions = existingPermissions
+                .Select(p => (p.UserId, p.DataSourceId))
+                .ToHashSet();
+            _originalPermissions = new HashSet<(Guid, Guid)>(_permissions);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load permissions data");
+            ToastService.ShowError($"Failed to load data: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool HasPermission(Guid userId, Guid dataSourceId)
+    {
+        return _permissions.Contains((userId, dataSourceId));
+    }
+
+    private void TogglePermission(Guid userId, Guid dataSourceId, bool hasPermission)
+    {
+        var key = (userId, dataSourceId);
+        if (hasPermission)
+        {
+            _permissions.Add(key);
+        }
+        else
+        {
+            _permissions.Remove(key);
+        }
+        StateHasChanged();
+    }
+
+    private void GrantAllToAdmins()
+    {
+        var adminUsers = _users.Where(u => u.UserRoles.Any(ur => ur.Role.Name == "Admin")).ToList();
+
+        foreach (var user in adminUsers)
+        {
+            foreach (var ds in _dataSources)
+            {
+                _permissions.Add((user.Id, ds.Id));
+            }
+        }
+
+        ToastService.ShowInfo("All data sources granted to admin users. Click Save to apply.");
+        StateHasChanged();
+    }
+
+    private void ClearAllPermissions()
+    {
+        _permissions.Clear();
+        ToastService.ShowWarning("All permissions cleared. Click Save to apply.");
+        StateHasChanged();
+    }
+
+    private async Task SavePermissions()
+    {
+        _isSaving = true;
+        try
+        {
+            // Find permissions to remove
+            var toRemove = _originalPermissions.Except(_permissions).ToList();
+            foreach (var (userId, dataSourceId) in toRemove)
+            {
+                var permission = await DbContext.UserDataSourcePermissions
+                    .FirstOrDefaultAsync(p => p.UserId == userId && p.DataSourceId == dataSourceId);
+                if (permission != null)
+                {
+                    DbContext.UserDataSourcePermissions.Remove(permission);
+                }
+            }
+
+            // Find permissions to add
+            var toAdd = _permissions.Except(_originalPermissions).ToList();
+            foreach (var (userId, dataSourceId) in toAdd)
+            {
+                DbContext.UserDataSourcePermissions.Add(new UserDataSourcePermission
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    DataSourceId = dataSourceId,
+                    CanRead = true,
+                    GrantedAt = DateTime.UtcNow
+                });
+            }
+
+            await DbContext.SaveChangesAsync();
+            _originalPermissions = new HashSet<(Guid, Guid)>(_permissions);
+
+            ToastService.ShowSuccess("Permissions saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save permissions");
+            ToastService.ShowError($"Failed to save: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

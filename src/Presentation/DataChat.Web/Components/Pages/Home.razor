@@ -1,0 +1,680 @@
+@page "/"
+@using DataChat.Application.Features.Chat.Commands
+@using DataChat.Application.Features.Chat.Queries
+@using DataChat.Application.Features.Chat.DTOs
+@using DataChat.Domain.Enums
+@using System.Text.Json
+@inject IMediator Mediator
+@inject ICurrentUserService CurrentUser
+@inject IAiChatService AiChatService
+@inject IEmbeddingService EmbeddingService
+@inject IVectorStore VectorStore
+@inject IApplicationDbContext DbContext
+@inject IDateTimeService DateTimeService
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Enterprise Chat</PageTitle>
+
+<HeadContent>
+    <style>
+        .chat-item { position: relative; }
+        .chat-item:hover { background: rgba(0, 0, 0, 0.04) !important; }
+        .chat-item-delete { opacity: 0; transition: opacity 0.15s ease; }
+        .chat-item:hover .chat-item-delete { opacity: 1; }
+        .chat-item-delete:hover { background: rgba(0, 0, 0, 0.1); }
+        .chat-item-delete:hover svg { fill: #d13438 !important; }
+        body.dark-theme .chat-item:hover { background: rgba(255, 255, 255, 0.06) !important; }
+        body.dark-theme .chat-item-delete:hover { background: rgba(255, 255, 255, 0.1); }
+
+        /* Attachment preview styles */
+        .attachment-preview { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: rgba(0,0,0,0.03); border-radius: 8px 8px 0 0; }
+        .attachment-thumb { position: relative; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.1); }
+        .attachment-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .attachment-thumb-remove { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; background: rgba(0,0,0,0.6); border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .attachment-thumb-remove:hover { background: #d13438; }
+        .attachment-thumb-file { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f5f5f5; }
+        .attachment-thumb-file span { font-size: 10px; color: #666; text-align: center; padding: 4px; word-break: break-all; }
+
+        /* Message attachment display */
+        .message-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .message-attachment-img { max-width: 300px; max-height: 300px; border-radius: 8px; cursor: pointer; }
+        .message-attachment-img:hover { opacity: 0.9; }
+        .message-attachment-doc { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f5f5f5; border-radius: 8px; border: 1px solid #e0e0e0; font-size: 13px; }
+        .message-attachment-doc span { color: #333; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .message-attachment-doc .doc-badge { background: #0078d4; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+        body.dark-theme .message-attachment-doc { background: #333; border-color: #444; }
+        body.dark-theme .message-attachment-doc span { color: #ddd; }
+
+        /* Upload button styles */
+        .upload-btn { background: #f0f0f0; border: 1px solid #ddd; cursor: pointer; padding: 8px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.15s ease; }
+        .upload-btn:hover { background: #e0e0e0; border-color: #0078d4; }
+        .upload-btn:hover svg { fill: #0078d4; }
+        .upload-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        body.dark-theme .upload-btn { background: #333; border-color: #555; }
+        body.dark-theme .upload-btn:hover { background: #444; border-color: #0078d4; }
+        body.dark-theme .attachment-preview { background: rgba(255,255,255,0.05); }
+        body.dark-theme .attachment-thumb { border-color: rgba(255,255,255,0.1); }
+        body.dark-theme .attachment-thumb-file { background: #333; }
+        body.dark-theme .attachment-thumb-file span { color: #ccc; }
+
+        /* Drag and drop styles */
+        .drop-zone { transition: all 0.2s ease; }
+        .drop-zone.drag-over { background: rgba(0, 120, 212, 0.1); border: 2px dashed #0078d4 !important; }
+        .drop-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 120, 212, 0.1); border: 3px dashed #0078d4; z-index: 9999; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+        .drop-overlay-text { background: white; padding: 24px 48px; border-radius: 12px; font-size: 18px; font-weight: 500; color: #0078d4; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+    </style>
+    <script>
+        window.setupDropZone = function(dropZoneId, inputId) {
+            const dropZone = document.querySelector('.' + dropZoneId);
+            const input = document.getElementById(inputId);
+            if (!dropZone || !input) return;
+
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                if (e.dataTransfer.files.length > 0) {
+                    input.files = e.dataTransfer.files;
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        };
+    </script>
+</HeadContent>
+
+<div style="display: flex; height: calc(100vh - 104px); gap: 24px;">
+    @* Chat Sidebar *@
+    <div class="glass-card" style="width: 280px; padding: 16px; display: flex; flex-direction: column;">
+        <button @onclick="CreateNewChat"
+                style="width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #0078d4, #106ebe); color: white; border: none; border-radius: 20px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="white">
+                <path d="M10 2.5C10.2761 2.5 10.5 2.72386 10.5 3V9.5H17C17.2761 9.5 17.5 9.72386 17.5 10C17.5 10.2761 17.2761 10.5 17 10.5H10.5V17C10.5 17.2761 10.2761 17.5 10 17.5C9.72386 17.5 9.5 17.2761 9.5 17V10.5H3C2.72386 10.5 2.5 10.2761 2.5 10C2.5 9.72386 2.72386 9.5 3 9.5H9.5V3C9.5 2.72386 9.72386 2.5 10 2.5Z"/>
+            </svg>
+            New Chat
+        </button>
+
+        <div style="flex: 1; overflow-y: auto;">
+            @foreach (var chat in _chats)
+            {
+                <div class="chat-item" @onclick="() => SelectChat(chat)"
+                     style="padding: 12px 16px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; @(chat.Id == _selectedChat?.Id ? "background: rgba(0, 120, 212, 0.1);" : "")">
+                    <div style="flex: 1; min-width: 0;">
+                        <div class="chat-list-title" style="font-size: 14px; color: #242424; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            @chat.Title
+                        </div>
+                        <div class="chat-list-time" style="font-size: 12px; color: #666; margin-top: 4px;">
+                            @((chat.UpdatedAt ?? chat.CreatedAt).ToString("MMM d, h:mm tt"))
+                        </div>
+                    </div>
+                    <button class="chat-item-delete" @onclick="() => DeleteChat(chat)" @onclick:stopPropagation="true"
+                            title="Delete chat"
+                            style="background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="#888">
+                            <path d="M8.5 4h3a1.5 1.5 0 00-3 0zm-1 0a2.5 2.5 0 015 0h5a.5.5 0 010 1h-1.054l-1.194 10.344A3 3 0 0112.272 18H7.728a3 3 0 01-2.98-2.656L3.554 5H2.5a.5.5 0 010-1h5zM5.741 15.23A2 2 0 007.728 17h4.544a2 2 0 001.987-1.77L15.439 5H4.561l1.18 10.23zM8.5 7.5a.5.5 0 01.5.5v6a.5.5 0 01-1 0V8a.5.5 0 01.5-.5zm3 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V8a.5.5 0 01.5-.5z"/>
+                        </svg>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Chat Window *@
+    <div class="glass-card" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+        @if (_selectedChat != null)
+        {
+            @* Messages Area *@
+            <div style="flex: 1; overflow-y: auto; padding: 24px;" @ref="_messagesContainer">
+                @if (!_messages.Any() && !_isStreaming)
+                {
+                    @* Empty state - Copilot style welcome *@
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
+                        <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #0078d4, #5c2d91); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                        </div>
+                        <h2 class="welcome-heading" style="font-size: 24px; font-weight: 600; color: #242424; margin: 0 0 8px 0;">How can I help you today?</h2>
+                        <p class="welcome-subtext" style="font-size: 14px; color: #666; margin: 0 0 32px 0;">Ask me anything about your documents and data.</p>
+
+                        @* Suggestion chips *@
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 600px;">
+                            <button class="suggestion-chip" @onclick='() => SendSuggestion("What documents do I have access to?")'>
+                                What documents do I have access to?
+                            </button>
+                            <button class="suggestion-chip" @onclick='() => SendSuggestion("Summarize recent changes")'>
+                                Summarize recent changes
+                            </button>
+                            <button class="suggestion-chip" @onclick='() => SendSuggestion("Help me find information about...")'>
+                                Help me find information about...
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var message in _messages)
+                    {
+                        <div class="chat-bubble @(message.Role == MessageRole.User ? "user" : "assistant")">
+                            @if (message.Role == MessageRole.Assistant)
+                            {
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <div style="width: 24px; height: 24px; background: linear-gradient(135deg, #0078d4, #5c2d91); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+                                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                        </svg>
+                                    </div>
+                                    <span class="assistant-name" style="font-size: 13px; font-weight: 600; color: #242424;">@_aiAssistantName</span>
+                                </div>
+                            }
+                            @* Display attachments (images and documents) if any *@
+                            @if (message.Attachments?.Any() == true)
+                            {
+                                <div class="message-attachments">
+                                    @foreach (var attachment in message.Attachments.Where(a => a.MimeType.StartsWith("image/")))
+                                    {
+                                        <img src="data:@attachment.MimeType;base64,@attachment.Base64Data"
+                                             alt="@attachment.FileName"
+                                             class="message-attachment-img"
+                                             title="@attachment.FileName" />
+                                    }
+                                    @foreach (var attachment in message.Attachments.Where(a => !a.MimeType.StartsWith("image/")))
+                                    {
+                                        <div class="message-attachment-doc" title="@attachment.FileName">
+                                            <svg width="20" height="20" viewBox="0 0 20 20" fill="@GetDocumentIconColor(attachment.MimeType)">
+                                                <path d="M11.5 0C12.6 0 13.6.4 14.4 1.2L17.8 4.6C18.6 5.4 19 6.4 19 7.5V17C19 18.7 17.7 20 16 20H4C2.3 20 1 18.7 1 17V3C1 1.3 2.3 0 4 0H11.5ZM11 2H4C3.4 2 3 2.4 3 3V17C3 17.6 3.4 18 4 18H16C16.6 18 17 17.6 17 17V8H13C11.9 8 11 7.1 11 6V2ZM13 2.4V6H16.6L13 2.4Z"/>
+                                            </svg>
+                                            <span>@GetTruncatedFileName(attachment.FileName)</span>
+                                            <span class="doc-badge">@GetFileExtension(attachment.FileName)</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            <div style="white-space: pre-wrap; line-height: 1.6;">@message.Content</div>
+                        </div>
+                    }
+                    @if (_isStreaming)
+                    {
+                        <div class="chat-bubble assistant">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <div style="width: 24px; height: 24px; background: linear-gradient(135deg, #0078d4, #5c2d91); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                    </svg>
+                                </div>
+                                <span class="assistant-name" style="font-size: 13px; font-weight: 600; color: #242424;">@_aiAssistantName</span>
+                            </div>
+                            <div style="white-space: pre-wrap; line-height: 1.6;">@_streamingContent</div>
+                            <div style="margin-top: 12px;">
+                                <FluentProgress />
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            @* Input Area - Copilot style *@
+            <div style="padding: 16px 24px 24px 24px;">
+                @* Attachment Preview *@
+                @if (_pendingAttachments.Any())
+                {
+                    <div class="attachment-preview">
+                        @foreach (var attachment in _pendingAttachments)
+                        {
+                            <div class="attachment-thumb">
+                                @if (attachment.MimeType.StartsWith("image/"))
+                                {
+                                    <img src="data:@attachment.MimeType;base64,@attachment.Base64Data" alt="@attachment.FileName" />
+                                }
+                                else
+                                {
+                                    <div class="attachment-thumb-file">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#666">
+                                            <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+                                        </svg>
+                                        <span>@attachment.FileName</span>
+                                    </div>
+                                }
+                                <button class="attachment-thumb-remove" @onclick="() => RemoveAttachment(attachment)" title="Remove">
+                                    <svg width="12" height="12" viewBox="0 0 20 20" fill="white">
+                                        <path d="M4.089 4.216l.057-.07a.5.5 0 01.638-.057l.07.057L10 9.293l5.146-5.147a.5.5 0 01.638-.057l.07.057a.5.5 0 01.057.638l-.057.07L10.707 10l5.147 5.146a.5.5 0 01.057.638l-.057.07a.5.5 0 01-.638.057l-.07-.057L10 10.707l-5.146 5.147a.5.5 0 01-.638.057l-.07-.057a.5.5 0 01-.057-.638l.057-.07L9.293 10 4.146 4.854a.5.5 0 01-.057-.638l.057-.07-.057.07z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="chat-input-container drop-zone @(_isDragOver ? "drag-over" : "")" style="@(_pendingAttachments.Any() ? "border-radius: 0 0 24px 24px;" : "")"
+                     @ondragenter="HandleDragEnter" @ondragenter:preventDefault
+                     @ondragleave="HandleDragLeave" @ondragleave:preventDefault
+                     @ondragover:preventDefault
+                     @ondrop="HandleDrop" @ondrop:preventDefault>
+                    @* Upload Button - using label for reliable file input trigger *@
+                    <label for="fileUploadInput" class="upload-btn" style="@(_isStreaming ? "opacity: 0.4; cursor: not-allowed;" : "")" title="Attach file (images, PDF, text)">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="#0078d4">
+                            <path d="M11.5 0C12.6 0 13.6.4 14.4 1.2L17.8 4.6C18.6 5.4 19 6.4 19 7.5V17C19 18.7 17.7 20 16 20H4C2.3 20 1 18.7 1 17V3C1 1.3 2.3 0 4 0H11.5ZM11 2H4C3.4 2 3 2.4 3 3V17C3 17.6 3.4 18 4 18H16C16.6 18 17 17.6 17 17V8H13C11.9 8 11 7.1 11 6V2ZM13 2.4V6H16.6L13 2.4Z"/>
+                        </svg>
+                    </label>
+                    <InputFile @ref="_fileInput" id="fileUploadInput" OnChange="HandleFileSelected" accept="image/*,.pdf,.txt,.csv,.md,.json" style="display: none;" disabled="@_isStreaming" multiple />
+
+                    <textarea @bind="_userInput"
+                              @bind:event="oninput"
+                              @onkeydown="HandleKeyDown"
+                              placeholder="@(_pendingAttachments.Any() ? "Add a message about this file..." : "Ask a work question or make a request")"
+                              rows="1"
+                              disabled="@_isStreaming"
+                              style="flex: 1; border: none; background: transparent; font-size: 15px; outline: none; resize: none; font-family: inherit; min-height: 24px; max-height: 120px;"></textarea>
+                    <button @onclick="SendMessage"
+                            disabled="@(_isStreaming || (string.IsNullOrWhiteSpace(_userInput) && !_pendingAttachments.Any()))"
+                            style="background: @(_isStreaming || (string.IsNullOrWhiteSpace(_userInput) && !_pendingAttachments.Any()) ? "#ccc" : "#0078d4"); color: white; border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: @(_isStreaming || (string.IsNullOrWhiteSpace(_userInput) && !_pendingAttachments.Any()) ? "not-allowed" : "pointer"); flex-shrink: 0;">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="white">
+                            <path d="M2.72113 2.05149L18.0756 9.61746C18.3233 9.73952 18.4252 10.0393 18.3031 10.287C18.2544 10.3858 18.1744 10.4658 18.0756 10.5145L2.72144 18.0803C2.47374 18.2024 2.17399 18.1005 2.05193 17.8528C1.99856 17.7445 1.98619 17.6205 2.0171 17.5038L3.9858 10.0659L2.01676 2.62803C1.94612 2.36051 2.10528 2.08657 2.3728 2.01594C2.48947 1.98503 2.61347 1.99741 2.72179 2.05078L2.72113 2.05149ZM3.5999 3.69629L5.11662 9.5H11.5C11.7761 9.5 12 9.72386 12 10C12 10.2455 11.8231 10.4496 11.5899 10.4919L11.5 10.5H5.11662L3.59962 16.3041L16.5154 10.0659L3.5999 3.69629Z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="disclaimer-text" style="font-size: 12px; color: #666; text-align: center; margin-top: 8px;">
+                    AI-generated content may be incorrect.
+                </div>
+            </div>
+        }
+        else
+        {
+            @* No chat selected *@
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                    </svg>
+                </div>
+                <h2 class="no-chat-text" style="font-size: 20px; font-weight: 600; color: #666; margin: 0;">Select a chat or create a new one</h2>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ChatDto> _chats = new();
+    private List<ChatMessageDto> _messages = new();
+    private ChatDto? _selectedChat;
+    private string _userInput = "";
+    private bool _isStreaming;
+    private string _streamingContent = "";
+    private ElementReference _messagesContainer;
+    private CancellationTokenSource? _streamingCts;
+    private string _aiAssistantName = "Assistant";
+
+    // File upload state
+    private List<MessageAttachmentDto> _pendingAttachments = new();
+    private InputFile? _fileInput;
+    private const int MaxFileSize = 20 * 1024 * 1024; // 20MB for PDFs
+    private const int MaxFiles = 4;
+    private readonly string[] _allowedImageTypes = { "image/jpeg", "image/png", "image/gif", "image/webp" };
+    private readonly string[] _allowedDocumentTypes = { "application/pdf", "text/plain", "text/csv", "text/markdown", "application/json" };
+    private bool _isDragOver;
+
+    private bool IsAllowedFileType(string contentType) =>
+        _allowedImageTypes.Contains(contentType.ToLowerInvariant()) ||
+        _allowedDocumentTypes.Contains(contentType.ToLowerInvariant());
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfiguration();
+        await LoadChats();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("setupDropZone", "drop-zone", "fileUploadInput");
+        }
+    }
+
+    private async Task LoadConfiguration()
+    {
+        var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+        if (config != null && !string.IsNullOrWhiteSpace(config.AiAssistantName))
+        {
+            _aiAssistantName = config.AiAssistantName;
+        }
+    }
+
+    private async Task LoadChats()
+    {
+        _chats = (await Mediator.Send(new GetUserChatsQuery())).ToList();
+    }
+
+    private async Task CreateNewChat()
+    {
+        var newChat = await Mediator.Send(new CreateChatCommand());
+        _chats.Insert(0, newChat);
+        _selectedChat = newChat;
+        _messages.Clear();
+        StateHasChanged();
+    }
+
+    private async Task SelectChat(ChatDto chat)
+    {
+        _selectedChat = chat;
+        await LoadMessages();
+    }
+
+    private async Task DeleteChat(ChatDto chat)
+    {
+        try
+        {
+            // Delete from database
+            var chatEntity = await DbContext.Chats
+                .Include(c => c.Messages)
+                .FirstOrDefaultAsync(c => c.Id == chat.Id);
+
+            if (chatEntity != null)
+            {
+                DbContext.ChatMessages.RemoveRange(chatEntity.Messages);
+                DbContext.Chats.Remove(chatEntity);
+                await DbContext.SaveChangesAsync();
+            }
+
+            // Remove from list
+            _chats.Remove(chat);
+
+            // Clear selection if deleted chat was selected
+            if (_selectedChat?.Id == chat.Id)
+            {
+                _selectedChat = _chats.FirstOrDefault();
+                if (_selectedChat != null)
+                {
+                    await LoadMessages();
+                }
+                else
+                {
+                    _messages.Clear();
+                }
+            }
+
+            ToastService.ShowSuccess("Chat deleted");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete chat: {ex.Message}");
+        }
+    }
+
+    private async Task LoadMessages()
+    {
+        if (_selectedChat == null) return;
+
+        _messages.Clear();
+        var chatDetail = await Mediator.Send(new GetChatMessagesQuery(_selectedChat.Id));
+        if (chatDetail != null)
+        {
+            _messages = chatDetail.Messages.ToList();
+        }
+        StateHasChanged();
+    }
+
+    private async Task SendSuggestion(string suggestion)
+    {
+        _userInput = suggestion;
+        await SendMessage();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !args.ShiftKey && (!string.IsNullOrWhiteSpace(_userInput) || _pendingAttachments.Any()))
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (_selectedChat == null || (string.IsNullOrWhiteSpace(_userInput) && !_pendingAttachments.Any()))
+            return;
+
+        var userMessage = _userInput;
+        var attachmentsToSend = _pendingAttachments.ToList();
+        _userInput = "";
+        _pendingAttachments.Clear();
+        _isStreaming = true;
+        _streamingContent = "";
+        _streamingCts = new CancellationTokenSource();
+
+        // Add user message to display immediately (with attachments)
+        var userMsgDto = new ChatMessageDto(
+            Guid.NewGuid(),
+            MessageRole.User,
+            userMessage,
+            DateTime.UtcNow,
+            null,
+            attachmentsToSend.Any() ? attachmentsToSend : null);
+        _messages.Add(userMsgDto);
+        StateHasChanged();
+
+        try
+        {
+            // Serialize attachments to JSON for storage
+            string? attachmentsJson = null;
+            if (attachmentsToSend.Any())
+            {
+                attachmentsJson = JsonSerializer.Serialize(attachmentsToSend);
+            }
+
+            // Save user message to database
+            var userMsg = new ChatMessage
+            {
+                Id = Guid.NewGuid(),
+                ChatId = _selectedChat.Id,
+                Role = MessageRole.User,
+                Content = userMessage,
+                AttachmentsJson = attachmentsJson,
+                CreatedAt = DateTimeService.UtcNow
+            };
+            DbContext.ChatMessages.Add(userMsg);
+            await DbContext.SaveChangesAsync(_streamingCts.Token);
+
+            // Build conversation history for AI (include attachments)
+            var conversationHistory = _messages
+                .Select(m => new ChatMessageDto(m.Id, m.Role, m.Content, m.CreatedAt, null, m.Attachments))
+                .ToList();
+
+            // Get user's accessible data sources and perform RAG
+            string? systemPrompt = null;
+            var accessibleDataSourceIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
+
+            if (accessibleDataSourceIds.Any())
+            {
+                try
+                {
+                    // Generate embedding for user's question
+                    var queryEmbedding = await EmbeddingService.GenerateEmbeddingAsync(userMessage, _streamingCts.Token);
+
+                    // Search for relevant document chunks
+                    var searchResults = await VectorStore.SearchAsync(
+                        queryEmbedding,
+                        topK: 5,
+                        accessibleDataSourceIds,
+                        _streamingCts.Token);
+
+                    if (searchResults.Any())
+                    {
+                        var ragContext = string.Join("\n\n---\n\n", searchResults.Select(r => r.Content));
+
+                        systemPrompt = "You are a helpful AI assistant with access to organizational documents.\n" +
+                            "Use the provided context to answer questions accurately.\n" +
+                            "If the context doesn't contain relevant information, say so clearly.\n" +
+                            "Always cite which document or section you're referencing when possible.\n\n" +
+                            "## Relevant Context:\n" + ragContext;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't fail - just proceed without RAG
+                    ToastService.ShowWarning($"Note: Could not search documents: {ex.Message}");
+                }
+            }
+
+            // Stream response directly from AI service
+            var responseBuilder = new System.Text.StringBuilder();
+            await foreach (var chunk in AiChatService.StreamResponseAsync(
+                conversationHistory,
+                systemPrompt,
+                _streamingCts.Token))
+            {
+                responseBuilder.Append(chunk);
+                _streamingContent = responseBuilder.ToString();
+                StateHasChanged();
+            }
+
+            // Save assistant message
+            if (!string.IsNullOrEmpty(_streamingContent))
+            {
+                var assistantMsg = new ChatMessage
+                {
+                    Id = Guid.NewGuid(),
+                    ChatId = _selectedChat.Id,
+                    Role = MessageRole.Assistant,
+                    Content = _streamingContent,
+                    CreatedAt = DateTimeService.UtcNow
+                };
+                DbContext.ChatMessages.Add(assistantMsg);
+
+                // Update chat title if first message
+                var chat = await DbContext.Chats.FindAsync(_selectedChat.Id);
+                if (chat != null && chat.Title == "New Chat")
+                {
+                    chat.Title = userMessage.Length > 50 ? userMessage[..50] + "..." : userMessage;
+                    chat.UpdatedAt = DateTimeService.UtcNow;
+                }
+
+                await DbContext.SaveChangesAsync(_streamingCts.Token);
+
+                // Add to local messages list
+                _messages.Add(new ChatMessageDto(
+                    assistantMsg.Id,
+                    MessageRole.Assistant,
+                    _streamingContent,
+                    assistantMsg.CreatedAt));
+            }
+
+            // Reload chat list to update titles
+            await LoadChats();
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancelled - that's okay
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isStreaming = false;
+            _streamingContent = "";
+            _streamingCts?.Dispose();
+            _streamingCts = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(MaxFiles);
+
+        foreach (var file in files)
+        {
+            // Check file count limit
+            if (_pendingAttachments.Count >= MaxFiles)
+            {
+                ToastService.ShowWarning($"Maximum {MaxFiles} files allowed per message.");
+                break;
+            }
+
+            // Validate file type
+            if (!IsAllowedFileType(file.ContentType))
+            {
+                ToastService.ShowError($"'{file.Name}' is not a supported file type. Use images (JPG, PNG, GIF, WebP) or documents (PDF, TXT, CSV, MD, JSON).");
+                continue;
+            }
+
+            // Validate file size
+            if (file.Size > MaxFileSize)
+            {
+                ToastService.ShowError($"'{file.Name}' exceeds the 20MB size limit.");
+                continue;
+            }
+
+            try
+            {
+                // Read file to base64
+                using var stream = file.OpenReadStream(MaxFileSize);
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                var base64 = Convert.ToBase64String(memoryStream.ToArray());
+
+                var attachment = new MessageAttachmentDto(
+                    file.Name,
+                    file.ContentType,
+                    base64,
+                    file.Size);
+
+                _pendingAttachments.Add(attachment);
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError($"Failed to read '{file.Name}': {ex.Message}");
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void RemoveAttachment(MessageAttachmentDto attachment)
+    {
+        _pendingAttachments.Remove(attachment);
+        StateHasChanged();
+    }
+
+    private void HandleDragEnter(DragEventArgs e)
+    {
+        if (!_isStreaming)
+        {
+            _isDragOver = true;
+        }
+    }
+
+    private void HandleDragLeave(DragEventArgs e)
+    {
+        _isDragOver = false;
+    }
+
+    private void HandleDrop(DragEventArgs e)
+    {
+        _isDragOver = false;
+        // JS handles the actual file drop via setupDropZone
+    }
+
+    private static string GetDocumentIconColor(string mimeType) =>
+        mimeType.ToLowerInvariant() switch
+        {
+            "application/pdf" => "#d13438",  // Red for PDF
+            "text/csv" => "#107c10",          // Green for CSV
+            "application/json" => "#ffb900",  // Yellow for JSON
+            _ => "#0078d4"                    // Blue for others
+        };
+
+    private static string GetTruncatedFileName(string fileName)
+    {
+        if (fileName.Length <= 20) return fileName;
+        var ext = Path.GetExtension(fileName);
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (name.Length > 15)
+            name = name[..12] + "...";
+        return name + ext;
+    }
+
+    private static string GetFileExtension(string fileName) =>
+        Path.GetExtension(fileName).TrimStart('.').ToUpperInvariant();
+}

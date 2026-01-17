@@ -1,0 +1,197 @@
+@page "/admin/branding"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IApplicationDbContext DbContext
+@inject IToastService ToastService
+@inject ILogger<Branding> Logger
+
+<PageTitle>Branding Configuration</PageTitle>
+
+<h4 style="margin-bottom: 16px;">Branding Configuration</h4>
+
+@if (_config != null)
+{
+    <FluentGrid Spacing="3">
+        <FluentGridItem xs="12" sm="8">
+            <FluentCard Style="padding: 16px;">
+                <h6 style="margin-bottom: 16px;">Application Branding</h6>
+
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <FluentTextField @bind-Value="_config.ApplicationName"
+                                    Label="Application Name"
+                                    Required="true"
+                                    Style="width: 100%;" />
+                    <span style="font-size: 12px; color: gray; margin-top: -12px;">The name displayed in the header and browser tab</span>
+
+                    <FluentTextField @bind-Value="_aiAssistantName"
+                                    Label="AI Assistant Name"
+                                    Placeholder="e.g., Assistant, Copilot, Helper"
+                                    Style="width: 100%;" />
+                    <span style="font-size: 12px; color: gray; margin-top: -12px;">The name displayed in chat messages from the AI</span>
+
+                    <FluentTextArea @bind-Value="_config.FooterText"
+                                   Label="Footer Text"
+                                   Rows="2"
+                                   Style="width: 100%;" />
+                    <span style="font-size: 12px; color: gray; margin-top: -12px;">Optional text displayed in the application footer</span>
+
+                    <FluentGrid Spacing="3">
+                        <FluentGridItem xs="12" sm="4">
+                            <label style="font-weight: 500; margin-bottom: 8px; display: block;">Primary Color</label>
+                            <input type="color" @bind="_config.PrimaryColor" style="width: 100%; height: 40px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer;" />
+                            <FluentTextField @bind-Value="_config.PrimaryColor" Style="width: 100%; margin-top: 4px;" />
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="4">
+                            <label style="font-weight: 500; margin-bottom: 8px; display: block;">Secondary Color</label>
+                            <input type="color" @bind="_config.SecondaryColor" style="width: 100%; height: 40px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer;" />
+                            <FluentTextField @bind-Value="_config.SecondaryColor" Style="width: 100%; margin-top: 4px;" />
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="4">
+                            <label style="font-weight: 500; margin-bottom: 8px; display: block;">Accent Color</label>
+                            <input type="color" @bind="_config.AccentColor" style="width: 100%; height: 40px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer;" />
+                            <FluentTextField @bind-Value="_config.AccentColor" Style="width: 100%; margin-top: 4px;" />
+                        </FluentGridItem>
+                    </FluentGrid>
+
+                    <FluentTextField @bind-Value="_config.LogoPath"
+                                    Label="Logo Path (optional)"
+                                    Placeholder="/images/logo.png"
+                                    Style="width: 100%;" />
+                    <span style="font-size: 12px; color: gray; margin-top: -12px;">Path to logo image file</span>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                        <FluentButton Appearance="Appearance.Outline" OnClick="ResetToDefaults">
+                            Reset to Defaults
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Accent" OnClick="SaveBranding" Disabled="_isSaving">
+                            @if (_isSaving)
+                            {
+                                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                            }
+                            Save Changes
+                        </FluentButton>
+                    </div>
+                </div>
+            </FluentCard>
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" sm="4">
+            <FluentCard Style="padding: 16px;">
+                <h6 style="margin-bottom: 16px;">Preview</h6>
+
+                <div style="background-color: @_config.PrimaryColor; padding: 16px; color: white; border-radius: 4px;">
+                    <strong style="color: white;">@_config.ApplicationName</strong>
+                </div>
+
+                <FluentCard Style="padding: 16px; margin-top: 8px; background-color: var(--neutral-layer-2);">
+                    <p style="margin-bottom: 8px;">
+                        This is a preview of how your branding will appear.
+                    </p>
+                    <div style="display: flex; gap: 8px;">
+                        <FluentButton Style="@($"background-color: {_config.PrimaryColor}; color: white;")">
+                            Primary Button
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Outline" Style="@($"border-color: {_config.SecondaryColor}; color: {_config.SecondaryColor};")">
+                            Secondary
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Stealth" Style="@($"color: {_config.AccentColor};")">
+                            Accent Link
+                        </FluentButton>
+                    </div>
+                </FluentCard>
+
+                @if (!string.IsNullOrEmpty(_config.FooterText))
+                {
+                    <div style="background-color: @_config.SecondaryColor; padding: 8px; color: white; border-radius: 4px; margin-top: 8px;">
+                        <span style="font-size: 12px; color: white;">@_config.FooterText</span>
+                    </div>
+                }
+
+                <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-top: 16px;">
+                    Note: Full theme changes require a page refresh after saving.
+                </FluentMessageBar>
+            </FluentCard>
+        </FluentGridItem>
+    </FluentGrid>
+}
+else
+{
+    <FluentProgressRing />
+}
+
+@code {
+    private BrandingConfiguration? _config;
+    private SystemConfiguration? _systemConfig;
+    private string _aiAssistantName = "Assistant";
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfiguration();
+    }
+
+    private async Task LoadConfiguration()
+    {
+        _config = await DbContext.BrandingConfiguration.FirstOrDefaultAsync();
+
+        if (_config == null)
+        {
+            _config = new BrandingConfiguration();
+            DbContext.BrandingConfiguration.Add(_config);
+            await DbContext.SaveChangesAsync();
+        }
+
+        // Load AI assistant name from SystemConfiguration
+        _systemConfig = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+        if (_systemConfig != null)
+        {
+            _aiAssistantName = _systemConfig.AiAssistantName;
+        }
+    }
+
+    private async Task SaveBranding()
+    {
+        if (_config == null) return;
+
+        _isSaving = true;
+        try
+        {
+            _config.UpdatedAt = DateTime.UtcNow;
+
+            // Save AI assistant name to SystemConfiguration
+            if (_systemConfig != null)
+            {
+                _systemConfig.AiAssistantName = string.IsNullOrWhiteSpace(_aiAssistantName) ? "Assistant" : _aiAssistantName;
+                _systemConfig.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess("Branding saved successfully! Refresh the page to see full changes.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save branding");
+            ToastService.ShowError($"Failed to save branding: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void ResetToDefaults()
+    {
+        if (_config == null) return;
+
+        _config.ApplicationName = "Enterprise Chat";
+        _config.PrimaryColor = "#0078d4";
+        _config.SecondaryColor = "#424242";
+        _config.AccentColor = "#0078d4";
+        _config.FooterText = null;
+        _config.LogoPath = null;
+        _aiAssistantName = "Assistant";
+
+        StateHasChanged();
+    }
+}

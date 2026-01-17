@@ -1,0 +1,341 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IApplicationDbContext DbContext
+@inject IAuthenticationService AuthService
+@inject IToastService ToastService
+@inject IDialogService DialogService
+@inject ILogger<Users> Logger
+
+<PageTitle>User Management</PageTitle>
+
+<h4 style="margin-bottom: 16px;">User Management</h4>
+
+<FluentCard Style="padding: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h6>Users</h6>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <FluentSearch @bind-Value="_searchText" Placeholder="Search users..." Style="width: 250px;" />
+            <FluentButton Appearance="Appearance.Accent" OnClick="OpenAddDialog">Add User</FluentButton>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <FluentProgress />
+    }
+    else
+    {
+        <FluentDataGrid Items="@FilteredUsers.AsQueryable()" TGridItem="User" Style="width: 100%;">
+            <PropertyColumn Property="@(u => u.Username)" Title="Username" Sortable="true" />
+            <PropertyColumn Property="@(u => u.DisplayName)" Title="Display Name" Sortable="true" />
+            <PropertyColumn Property="@(u => u.Email ?? "-")" Title="Email" />
+            <TemplateColumn Title="Auth Type">
+                @if (!string.IsNullOrEmpty(context.WindowsIdentity))
+                {
+                    <FluentBadge Appearance="Appearance.Accent">Windows</FluentBadge>
+                }
+                else
+                {
+                    <FluentBadge>Local</FluentBadge>
+                }
+            </TemplateColumn>
+            <TemplateColumn Title="Roles">
+                @foreach (var role in context.UserRoles.Select(ur => ur.Role.Name))
+                {
+                    <FluentBadge Appearance="@(role == "Admin" ? Appearance.Accent : Appearance.Neutral)" Style="margin-right: 4px;">
+                        @role
+                    </FluentBadge>
+                }
+            </TemplateColumn>
+            <TemplateColumn Title="Status">
+                @if (context.IsActive)
+                {
+                    <FluentBadge BackgroundColor="#107c10" Color="white">Active</FluentBadge>
+                }
+                else
+                {
+                    <FluentBadge BackgroundColor="#d13438" Color="white">Inactive</FluentBadge>
+                }
+            </TemplateColumn>
+            <PropertyColumn Property="@(u => u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToString("MMM dd, HH:mm") : "Never")" Title="Last Login" />
+            <TemplateColumn Title="Actions" Style="width: 150px;">
+                <FluentButton Appearance="Appearance.Stealth" Title="Edit" OnClick="@(() => EditUser(context))">Edit</FluentButton>
+                <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ToggleUserStatus(context))">
+                    @(context.IsActive ? "Disable" : "Enable")
+                </FluentButton>
+            </TemplateColumn>
+        </FluentDataGrid>
+    }
+</FluentCard>
+
+@* Add/Edit User Dialog *@
+<FluentDialog @bind-Hidden="@_dialogHidden" Modal="true" TrapFocus="true" Style="width: 500px;">
+    <FluentDialogHeader ShowDismiss="true">
+        <h6>@(_isEditing ? "Edit User" : "Add User")</h6>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <FluentTextField @bind-Value="_editModel.Username"
+                            Label="Username"
+                            Required="true"
+                            Disabled="_isEditing"
+                            Style="width: 100%;" />
+            <FluentTextField @bind-Value="_editModel.DisplayName"
+                            Label="Display Name"
+                            Required="true"
+                            Style="width: 100%;" />
+            <FluentTextField @bind-Value="_editModel.Email"
+                            Label="Email"
+                            TextFieldType="TextFieldType.Email"
+                            Style="width: 100%;" />
+            @if (!_isEditing)
+            {
+                <FluentTextField @bind-Value="_editModel.Password"
+                                Label="Password"
+                                TextFieldType="TextFieldType.Password"
+                                Required="true"
+                                Style="width: 100%;" />
+                <FluentTextField @bind-Value="_editModel.ConfirmPassword"
+                                Label="Confirm Password"
+                                TextFieldType="TextFieldType.Password"
+                                Required="true"
+                                Style="width: 100%;" />
+            }
+            <div>
+                <label style="font-weight: 500; margin-bottom: 8px; display: block;">Roles</label>
+                @foreach (var role in _allRoles)
+                {
+                    <FluentCheckbox @bind-Value="role.IsSelected" Label="@role.Name" Style="margin-right: 16px;" />
+                }
+            </div>
+            <FluentSwitch @bind-Value="_editModel.IsActive" Label="Active" />
+        </div>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton OnClick="CloseDialog">Cancel</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" OnClick="SaveUser" Disabled="_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+            }
+            Save
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    private List<User> _users = new();
+    private List<RoleSelection> _allRoles = new();
+    private bool _isLoading = true;
+    private string _searchText = "";
+    private bool _dialogHidden = true;
+    private bool _isEditing;
+    private bool _isSaving;
+    private UserEditModel _editModel = new();
+    private Guid? _editingId;
+
+    private IEnumerable<User> FilteredUsers =>
+        string.IsNullOrWhiteSpace(_searchText)
+            ? _users
+            : _users.Where(u =>
+                u.Username.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                u.DisplayName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                (u.Email?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+        await LoadRoles();
+    }
+
+    private async Task LoadUsers()
+    {
+        _isLoading = true;
+        try
+        {
+            _users = await DbContext.Users
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .OrderBy(u => u.Username)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load users");
+            ToastService.ShowError($"Failed to load users: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadRoles()
+    {
+        var roles = await DbContext.Roles.OrderBy(r => r.Name).ToListAsync();
+        _allRoles = roles.Select(r => new RoleSelection { Id = r.Id, Name = r.Name }).ToList();
+    }
+
+    private void OpenAddDialog()
+    {
+        _isEditing = false;
+        _editingId = null;
+        _editModel = new UserEditModel { IsActive = true };
+        foreach (var role in _allRoles) role.IsSelected = false;
+        _dialogHidden = false;
+    }
+
+    private void EditUser(User user)
+    {
+        _isEditing = true;
+        _editingId = user.Id;
+        _editModel = new UserEditModel
+        {
+            Username = user.Username,
+            DisplayName = user.DisplayName,
+            Email = user.Email,
+            IsActive = user.IsActive
+        };
+
+        foreach (var role in _allRoles)
+        {
+            role.IsSelected = user.UserRoles.Any(ur => ur.RoleId == role.Id);
+        }
+
+        _dialogHidden = false;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogHidden = true;
+    }
+
+    private async Task SaveUser()
+    {
+        if (string.IsNullOrWhiteSpace(_editModel.Username) || string.IsNullOrWhiteSpace(_editModel.DisplayName))
+        {
+            ToastService.ShowError("Username and Display Name are required");
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            User user;
+
+            if (_isEditing && _editingId.HasValue)
+            {
+                user = await DbContext.Users
+                    .Include(u => u.UserRoles)
+                    .FirstAsync(u => u.Id == _editingId.Value);
+
+                user.DisplayName = _editModel.DisplayName!;
+                user.Email = _editModel.Email;
+                user.IsActive = _editModel.IsActive;
+
+                var existingRoleIds = user.UserRoles.Select(ur => ur.RoleId).ToList();
+                var selectedRoleIds = _allRoles.Where(r => r.IsSelected).Select(r => r.Id).ToList();
+
+                var rolesToRemove = user.UserRoles.Where(ur => !selectedRoleIds.Contains(ur.RoleId)).ToList();
+                foreach (var ur in rolesToRemove)
+                {
+                    DbContext.UserRoles.Remove(ur);
+                }
+
+                var rolesToAdd = selectedRoleIds.Where(id => !existingRoleIds.Contains(id));
+                foreach (var roleId in rolesToAdd)
+                {
+                    DbContext.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = roleId });
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(_editModel.Password))
+                {
+                    ToastService.ShowError("Password is required");
+                    return;
+                }
+
+                if (_editModel.Password != _editModel.ConfirmPassword)
+                {
+                    ToastService.ShowError("Passwords do not match!");
+                    return;
+                }
+
+                user = new User
+                {
+                    Id = Guid.NewGuid(),
+                    Username = _editModel.Username!,
+                    DisplayName = _editModel.DisplayName!,
+                    Email = _editModel.Email,
+                    PasswordHash = AuthService.HashPassword(_editModel.Password!),
+                    IsActive = _editModel.IsActive,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                DbContext.Users.Add(user);
+
+                foreach (var role in _allRoles.Where(r => r.IsSelected))
+                {
+                    DbContext.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess(_isEditing ? "User updated!" : "User created!");
+            CloseDialog();
+            await LoadUsers();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save user");
+            ToastService.ShowError($"Failed to save: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ToggleUserStatus(User user)
+    {
+        var action = user.IsActive ? "deactivate" : "activate";
+        var dialog = await DialogService.ShowConfirmationAsync(
+            $"Are you sure you want to {action} user '{user.Username}'?",
+            "Yes", "Cancel",
+            $"{(user.IsActive ? "Deactivate" : "Activate")} User");
+
+        var result = await dialog.Result;
+        if (result.Cancelled) return;
+
+        try
+        {
+            user.IsActive = !user.IsActive;
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess($"User {action}d successfully!");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to toggle user status");
+            ToastService.ShowError($"Failed to {action} user: {ex.Message}");
+        }
+    }
+
+    private class UserEditModel
+    {
+        public string? Username { get; set; }
+        public string? DisplayName { get; set; }
+        public string? Email { get; set; }
+        public string? Password { get; set; }
+        public string? ConfirmPassword { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    private class RoleSelection
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public bool IsSelected { get; set; }
+    }
+}

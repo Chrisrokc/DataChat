@@ -1,0 +1,436 @@
+@page "/admin/sync-status"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IDocumentSyncService SyncService
+@inject IApplicationDbContext DbContext
+@inject IConfiguration Configuration
+@inject IToastService ToastService
+@inject ILogger<SyncJobs> Logger
+@implements IDisposable
+
+<PageTitle>Sync Status</PageTitle>
+
+<h4 style="margin-bottom: 16px;">Document Sync Status</h4>
+
+@* Data Source Summary Section *@
+<FluentCard Style="padding: 16px;">
+    <h6 style="margin-bottom: 16px;">Data Source Summary</h6>
+
+    @if (_isLoadingSummary)
+    {
+        <FluentProgress />
+    }
+    else if (!_dataSourceSummaries.Any())
+    {
+        <FluentMessageBar Intent="@MessageIntent.Info">
+            No data sources configured. Go to Data Sources to add one.
+        </FluentMessageBar>
+    }
+    else
+    {
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--neutral-stroke-rest); background-color: var(--neutral-layer-2);">
+                    <th style="text-align: left; padding: 12px;">Data Source</th>
+                    <th style="text-align: left; padding: 12px;">Last Synced</th>
+                    <th style="text-align: center; padding: 12px;">Total Files</th>
+                    <th style="text-align: center; padding: 12px;">Successful</th>
+                    <th style="text-align: center; padding: 12px;">Failed</th>
+                    <th style="text-align: left; padding: 12px;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var summary in _dataSourceSummaries)
+                {
+                    <tr style="border-bottom: 1px solid var(--neutral-stroke-rest);">
+                        <td style="padding: 12px;">
+                            <strong>@summary.Name</strong>
+                            <br />
+                            <span style="font-size: 11px; color: gray;">@summary.Type</span>
+                        </td>
+                        <td style="padding: 12px;">
+                            @if (summary.LastSyncedAt.HasValue)
+                            {
+                                <span>@summary.LastSyncedAt.Value.ToString("MMM dd, yyyy HH:mm")</span>
+                            }
+                            else
+                            {
+                                <span style="color: gray;">Never synced</span>
+                            }
+                        </td>
+                        <td style="text-align: center; padding: 12px;">@summary.TotalDocuments</td>
+                        <td style="text-align: center; padding: 12px; color: #107c10;">@summary.SuccessfulDocuments</td>
+                        <td style="text-align: center; padding: 12px; color: #d13438;">@summary.FailedDocuments</td>
+                        <td style="padding: 12px;">
+                            <FluentBadge BackgroundColor="@GetSummaryStatusColor(summary)" Color="white">
+                                @GetSummaryStatusText(summary)
+                            </FluentBadge>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @* Storage Information *@
+        <div style="margin-top: 20px; padding: 16px; background-color: var(--neutral-layer-2); border-radius: 4px;">
+            <h6 style="margin-bottom: 12px;">Storage Information</h6>
+            <FluentGrid Spacing="3">
+                <FluentGridItem xs="12" sm="6" md="4">
+                    <div style="padding: 8px;">
+                        <span style="font-size: 12px; color: gray;">Database Server</span>
+                        <br />
+                        <strong>@_storageInfo.Server</strong>
+                    </div>
+                </FluentGridItem>
+                <FluentGridItem xs="12" sm="6" md="4">
+                    <div style="padding: 8px;">
+                        <span style="font-size: 12px; color: gray;">Database Name</span>
+                        <br />
+                        <strong>@_storageInfo.Database</strong>
+                    </div>
+                </FluentGridItem>
+                <FluentGridItem xs="12" sm="6" md="4">
+                    <div style="padding: 8px;">
+                        <span style="font-size: 12px; color: gray;">Vector Storage</span>
+                        <br />
+                        <strong>@_storageInfo.VectorStorage</strong>
+                    </div>
+                </FluentGridItem>
+                <FluentGridItem xs="12" sm="6" md="4">
+                    <div style="padding: 8px;">
+                        <span style="font-size: 12px; color: gray;">Documents Table</span>
+                        <br />
+                        <code style="font-size: 12px;">@_storageInfo.DocumentsTable</code>
+                    </div>
+                </FluentGridItem>
+                <FluentGridItem xs="12" sm="6" md="4">
+                    <div style="padding: 8px;">
+                        <span style="font-size: 12px; color: gray;">Chunks Table</span>
+                        <br />
+                        <code style="font-size: 12px;">@_storageInfo.ChunksTable</code>
+                    </div>
+                </FluentGridItem>
+                <FluentGridItem xs="12" sm="6" md="4">
+                    <div style="padding: 8px;">
+                        <span style="font-size: 12px; color: gray;">Total Chunks</span>
+                        <br />
+                        <strong>@_storageInfo.TotalChunks.ToString("N0")</strong>
+                    </div>
+                </FluentGridItem>
+            </FluentGrid>
+        </div>
+    }
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--neutral-stroke-rest);">
+        <h6>Active & Recent Sync Jobs</h6>
+        <FluentButton Appearance="Appearance.Stealth" OnClick="RefreshAll" Title="Refresh">
+            Refresh
+        </FluentButton>
+    </div>
+
+    @if (_isLoading)
+    {
+        <FluentProgress />
+    }
+    else if (!_jobs.Any())
+    {
+        <FluentMessageBar Intent="@MessageIntent.Info">
+            No sync jobs found. Go to Data Sources and click "Sync Now" to start indexing documents.
+        </FluentMessageBar>
+    }
+    else
+    {
+        @foreach (var job in _jobs)
+        {
+            <FluentCard Style="margin-bottom: 12px; padding: 16px;">
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="12" sm="6">
+                        <h6>@job.DataSourceName</h6>
+                        <span style="font-size: 12px; color: gray;">
+                            Started: @job.StartedAt.ToString("MMM dd, yyyy HH:mm:ss")
+                            @if (job.CompletedAt.HasValue)
+                            {
+                                <text> | Completed: @job.CompletedAt.Value.ToString("HH:mm:ss")</text>
+                            }
+                        </span>
+                    </FluentGridItem>
+                    <FluentGridItem xs="12" sm="6">
+                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+                            <FluentBadge BackgroundColor="@GetStatusColor(job.Status)" Color="white">
+                                @job.Status.ToString()
+                            </FluentBadge>
+                            @if (job.Status == SyncJobStatus.Processing || job.Status == SyncJobStatus.Scanning || job.Status == SyncJobStatus.Queued)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => CancelJob(job.Id))">
+                                    Cancel
+                                </FluentButton>
+                            }
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+
+                @if (job.Status == SyncJobStatus.Processing || job.Status == SyncJobStatus.Scanning)
+                {
+                    <FluentProgress Value="@((int)job.ProgressPercentage)" Max="100" Style="margin: 12px 0;" />
+                    <p>
+                        Processing: @job.ProcessedFiles / @job.TotalFiles files
+                        @if (!string.IsNullOrEmpty(job.CurrentFile))
+                        {
+                            <text> - Currently: @job.CurrentFile</text>
+                        }
+                    </p>
+                }
+                else if (job.Status == SyncJobStatus.Completed || job.Status == SyncJobStatus.Failed)
+                {
+                    <FluentGrid Spacing="3" Style="margin-top: 8px;">
+                        <FluentGridItem xs="3">
+                            <p><strong>Total Files:</strong> @job.TotalFiles</p>
+                        </FluentGridItem>
+                        <FluentGridItem xs="3">
+                            <p style="color: #107c10;">
+                                <strong>Successful:</strong> @job.SuccessfulFiles
+                            </p>
+                        </FluentGridItem>
+                        <FluentGridItem xs="3">
+                            <p style="color: #d13438;">
+                                <strong>Failed:</strong> @job.FailedFiles
+                            </p>
+                        </FluentGridItem>
+                        <FluentGridItem xs="3">
+                            @if (job.CompletedAt.HasValue)
+                            {
+                                var duration = job.CompletedAt.Value - job.StartedAt;
+                                <p>
+                                    <strong>Duration:</strong> @FormatDuration(duration)
+                                </p>
+                            }
+                        </FluentGridItem>
+                    </FluentGrid>
+                }
+
+                @if (!string.IsNullOrEmpty(job.ErrorMessage))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Error" Style="margin-top: 8px;">
+                        @job.ErrorMessage
+                    </FluentMessageBar>
+                }
+
+                @if (job.FileResults.Any(f => !f.Success))
+                {
+                    <FluentAccordion Style="margin-top: 12px;">
+                        <FluentAccordionItem Heading="@($"Failed Files ({job.FileResults.Count(f => !f.Success)})")">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--neutral-stroke-rest);">
+                                        <th style="text-align: left; padding: 8px;">File Name</th>
+                                        <th style="text-align: left; padding: 8px;">Error</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var file in job.FileResults.Where(f => !f.Success))
+                                    {
+                                        <tr style="border-bottom: 1px solid var(--neutral-stroke-rest);">
+                                            <td style="padding: 8px;">@file.FileName</td>
+                                            <td style="padding: 8px;">
+                                                <span style="color: #d13438;">@file.ErrorMessage</span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </FluentAccordionItem>
+                    </FluentAccordion>
+                }
+            </FluentCard>
+        }
+    }
+</FluentCard>
+
+@code {
+    private List<SyncJob> _jobs = new();
+    private List<DataSourceSummary> _dataSourceSummaries = new();
+    private StorageInfo _storageInfo = new();
+    private bool _isLoading = true;
+    private bool _isLoadingSummary = true;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAll();
+
+        // Auto-refresh every 2 seconds when there are active jobs
+        _refreshTimer = new Timer(async _ =>
+        {
+            if (_jobs.Any(j => j.Status == SyncJobStatus.Processing ||
+                              j.Status == SyncJobStatus.Scanning ||
+                              j.Status == SyncJobStatus.Queued))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshJobs();
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private async Task RefreshAll()
+    {
+        await Task.WhenAll(RefreshJobs(), RefreshSummary());
+    }
+
+    private async Task RefreshJobs()
+    {
+        try
+        {
+            _jobs = (await SyncService.GetRecentSyncJobsAsync(20)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load sync jobs");
+            ToastService.ShowError($"Failed to load sync jobs: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RefreshSummary()
+    {
+        try
+        {
+            // Load data source summaries
+            var dataSources = await DbContext.DataSources
+                .Include(ds => ds.Documents)
+                .ToListAsync();
+
+            _dataSourceSummaries = dataSources.Select(ds => new DataSourceSummary
+            {
+                Id = ds.Id,
+                Name = ds.Name,
+                Type = ds.Type.ToString(),
+                TotalDocuments = ds.Documents.Count,
+                SuccessfulDocuments = ds.Documents.Count(d => d.Status == DocumentStatus.Indexed),
+                FailedDocuments = ds.Documents.Count(d => d.Status == DocumentStatus.Failed),
+                LastSyncedAt = ds.Documents
+                    .Where(d => d.ProcessedAt.HasValue)
+                    .OrderByDescending(d => d.ProcessedAt)
+                    .Select(d => d.ProcessedAt)
+                    .FirstOrDefault()
+            }).ToList();
+
+            // Load storage info
+            await LoadStorageInfo();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load data source summaries");
+        }
+        finally
+        {
+            _isLoadingSummary = false;
+        }
+    }
+
+    private async Task LoadStorageInfo()
+    {
+        // Parse connection string for server/database info
+        var connectionString = Configuration.GetConnectionString("DefaultConnection") ?? "";
+        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+
+        _storageInfo.Server = builder.DataSource ?? "Unknown";
+        _storageInfo.Database = builder.InitialCatalog ?? "Unknown";
+        _storageInfo.DocumentsTable = "dbo.Documents";
+        _storageInfo.ChunksTable = "dbo.DocumentChunks";
+        _storageInfo.VectorStorage = "SQL Server 2025 Native VECTOR(1536)";
+
+        // Get total chunks count
+        _storageInfo.TotalChunks = await DbContext.DocumentChunks.CountAsync();
+    }
+
+    private async Task CancelJob(Guid jobId)
+    {
+        try
+        {
+            await SyncService.CancelSyncAsync(jobId);
+            ToastService.ShowInfo("Sync job cancelled");
+            await RefreshJobs();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to cancel sync job");
+            ToastService.ShowError($"Failed to cancel: {ex.Message}");
+        }
+    }
+
+    private string GetStatusColor(SyncJobStatus status)
+    {
+        return status switch
+        {
+            SyncJobStatus.Queued => "var(--neutral-fill-rest)",
+            SyncJobStatus.Scanning => "#0078d4",
+            SyncJobStatus.Processing => "#0078d4",
+            SyncJobStatus.Completed => "#107c10",
+            SyncJobStatus.Failed => "#d13438",
+            SyncJobStatus.Cancelled => "#ffb900",
+            _ => "var(--neutral-fill-rest)"
+        };
+    }
+
+    private string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{duration.Hours}h {duration.Minutes}m {duration.Seconds}s";
+        if (duration.TotalMinutes >= 1)
+            return $"{duration.Minutes}m {duration.Seconds}s";
+        return $"{duration.Seconds}s";
+    }
+
+    private string GetSummaryStatusColor(DataSourceSummary summary)
+    {
+        if (summary.TotalDocuments == 0)
+            return "var(--neutral-fill-rest)";
+        if (summary.FailedDocuments > 0 && summary.SuccessfulDocuments == 0)
+            return "#d13438";
+        if (summary.FailedDocuments > 0)
+            return "#ffb900";
+        return "#107c10";
+    }
+
+    private string GetSummaryStatusText(DataSourceSummary summary)
+    {
+        if (summary.TotalDocuments == 0)
+            return "No Files";
+        if (summary.FailedDocuments > 0 && summary.SuccessfulDocuments == 0)
+            return "Failed";
+        if (summary.FailedDocuments > 0)
+            return "Partial";
+        return "Synced";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private class DataSourceSummary
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "";
+        public int TotalDocuments { get; set; }
+        public int SuccessfulDocuments { get; set; }
+        public int FailedDocuments { get; set; }
+        public DateTime? LastSyncedAt { get; set; }
+    }
+
+    private class StorageInfo
+    {
+        public string Server { get; set; } = "";
+        public string Database { get; set; } = "";
+        public string VectorStorage { get; set; } = "";
+        public string DocumentsTable { get; set; } = "";
+        public string ChunksTable { get; set; } = "";
+        public int TotalChunks { get; set; }
+    }
+}

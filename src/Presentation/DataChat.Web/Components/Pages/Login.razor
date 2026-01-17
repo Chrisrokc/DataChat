@@ -1,0 +1,123 @@
+@page "/login"
+@layout DataChat.Web.Components.Layout.EmptyLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+<PageTitle>Login - Enterprise Chat</PageTitle>
+
+<FluentDesignTheme Mode="DesignThemeModes.Light" />
+
+<style>
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #0078d4 0%, #106ebe 100%);
+    }
+    .login-card {
+        background: white;
+        border-radius: 8px;
+        padding: 40px;
+        width: 400px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .login-title {
+        text-align: center;
+        color: #333;
+        margin-bottom: 8px;
+        font-size: 28px;
+        font-weight: 600;
+    }
+    .login-subtitle {
+        text-align: center;
+        color: #666;
+        margin-bottom: 32px;
+    }
+    .form-group {
+        margin-bottom: 20px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 500;
+    }
+    .form-group input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 16px;
+        transition: border-color 0.2s;
+        box-sizing: border-box;
+    }
+    .form-group input:focus {
+        outline: none;
+        border-color: #0078d4;
+    }
+    .login-button {
+        width: 100%;
+        padding: 14px;
+        background: #0078d4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .login-button:hover {
+        background: #106ebe;
+    }
+    .error-message {
+        background: #fde7e9;
+        color: #a4262c;
+        padding: 12px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+</style>
+
+<div class="login-container">
+    <div class="login-card">
+        <h1 class="login-title">Enterprise Chat</h1>
+        <p class="login-subtitle">Sign in to continue</p>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="error-message">@_errorMessage</div>
+        }
+
+        <form action="/api/login" method="post">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Enter your username" required />
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter your password" required />
+            </div>
+
+            <button type="submit" class="login-button">Sign In</button>
+        </form>
+    </div>
+</div>
+
+@code {
+    private string? _errorMessage;
+
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Error))
+        {
+            _errorMessage = Error;
+        }
+    }
+}

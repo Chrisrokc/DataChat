@@ -1,0 +1,542 @@
+@page "/admin/configuration"
+@attribute [Authorize(Policy = "AdminOnly")]
+@using Microsoft.Data.SqlClient
+@inject IApplicationDbContext DbContext
+@inject ISecureConfigurationService SecureConfig
+@inject IAiChatService AiChatService
+@inject IToastService ToastService
+@inject ILogger<Configuration> Logger
+
+<PageTitle>System Configuration</PageTitle>
+
+<h4 style="margin-bottom: 16px;">System Configuration</h4>
+
+<FluentTabs>
+    <FluentTab Label="SQL Server" Id="sql-settings">
+        @if (_config != null)
+        {
+            <FluentCard Style="padding: 16px; margin-top: 16px;">
+                <FluentMessageBar Intent="@MessageIntent.Warning" Style="margin-bottom: 16px;">
+                    <strong>Requires SQL Server 2025 or later.</strong> This application uses native VECTOR data types for embedding storage, which are only available in SQL Server 2025+.
+                </FluentMessageBar>
+
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="12" sm="8">
+                        <FluentTextField @bind-Value="_config.SqlServerHost"
+                                        Label="Server Host / IP Address"
+                                        Placeholder="e.g., 192.168.1.100 or sqlserver.domain.com"
+                                        Style="width: 100%;" />
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="4">
+                        <FluentNumberField @bind-Value="_config.SqlServerPort"
+                                          Label="Port"
+                                          Min="1" Max="65535"
+                                          Style="width: 100%;" />
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentTextField @bind-Value="_config.SqlServerDatabase"
+                                        Label="Database Name"
+                                        Placeholder="e.g., DataChat"
+                                        Style="width: 100%;" />
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentNumberField @bind-Value="_config.SqlServerConnectionTimeout"
+                                          Label="Connection Timeout (seconds)"
+                                          Min="5" Max="300"
+                                          Style="width: 100%;" />
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <FluentCheckbox @bind-Value="_config.SqlServerUseIntegratedSecurity"
+                                       Label="Use Windows Integrated Security (trusted connection)" />
+                    </FluentGridItem>
+
+                    @if (!_config.SqlServerUseIntegratedSecurity)
+                    {
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_config.SqlServerUsername"
+                                            Label="Username"
+                                            Placeholder="e.g., sa"
+                                            Style="width: 100%;" />
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_sqlPassword"
+                                            Label="Password"
+                                            TextFieldType="@(_showSqlPassword ? TextFieldType.Text : TextFieldType.Password)"
+                                            Placeholder="@(_hasExistingSqlPassword ? "Leave blank to keep existing" : "Enter password")"
+                                            Style="width: 100%;">
+                                <span slot="end" @onclick="@(() => _showSqlPassword = !_showSqlPassword)" style="cursor: pointer; display: flex; align-items: center;" title="@(_showSqlPassword ? "Hide password" : "Show password")">
+                                    @if (_showSqlPassword)
+                                    {
+                                        <FluentIcon Value="@(new Icons.Regular.Size20.EyeOff())" />
+                                    }
+                                    else
+                                    {
+                                        <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+                                    }
+                                </span>
+                            </FluentTextField>
+                        </FluentGridItem>
+                    }
+
+                    <FluentGridItem xs="12">
+                        <FluentCheckbox @bind-Value="_config.SqlServerTrustServerCertificate"
+                                       Label="Trust Server Certificate (for self-signed certificates)" />
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                            <FluentButton Appearance="Appearance.Outline" OnClick="TestSqlConnection" Disabled="_isTestingSql">
+                                @if (_isTestingSql)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                }
+                                Test Connection
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Accent" OnClick="SaveSqlSettings" Disabled="_isSavingSql">
+                                @if (_isSavingSql)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                }
+                                Save SQL Settings
+                            </FluentButton>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+
+                @if (!string.IsNullOrEmpty(_sqlConnectionStatus))
+                {
+                    <FluentMessageBar Intent="@_sqlConnectionStatusIntent" Style="margin-top: 16px;">
+                        @_sqlConnectionStatus
+                    </FluentMessageBar>
+                }
+            </FluentCard>
+        }
+        else
+        {
+            <FluentProgressRing />
+        }
+    </FluentTab>
+
+    <FluentTab Label="AI Settings" Id="ai-settings">
+        @if (_config != null)
+        {
+            <FluentCard Style="padding: 16px; margin-top: 16px;">
+                <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-bottom: 16px;">
+                    Configure your OpenAI API settings. The API key will be encrypted before storage.
+                </FluentMessageBar>
+
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentTextField @bind-Value="_apiKey"
+                                        Label="OpenAI API Key"
+                                        TextFieldType="@(_showApiKey ? TextFieldType.Text : TextFieldType.Password)"
+                                        Placeholder="@(_hasExistingApiKey ? "Leave blank to keep existing key" : "sk-...")"
+                                        Style="width: 100%;">
+                            <span slot="end" @onclick="@(() => _showApiKey = !_showApiKey)" style="cursor: pointer; display: flex; align-items: center;" title="@(_showApiKey ? "Hide API key" : "Show API key")">
+                                @if (_showApiKey)
+                                {
+                                    <FluentIcon Value="@(new Icons.Regular.Size20.EyeOff())" />
+                                }
+                                else
+                                {
+                                    <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+                                }
+                            </span>
+                        </FluentTextField>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <div>
+                            <label style="font-weight: 500; margin-bottom: 4px; display: block;">Chat Model</label>
+                            <select @bind="_config.OpenAiModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                @foreach (var model in _chatModels)
+                                {
+                                    <option value="@model">@model</option>
+                                }
+                            </select>
+                        </div>
+                        <span style="font-size: 12px; color: gray;">Select the OpenAI model for chat completions</span>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <div>
+                            <label style="font-weight: 500; margin-bottom: 4px; display: block;">Embedding Model</label>
+                            <select @bind="_config.EmbeddingModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                @foreach (var model in _embeddingModels)
+                                {
+                                    <option value="@model">@model</option>
+                                }
+                            </select>
+                        </div>
+                        <span style="font-size: 12px; color: gray;">Select the model for document embeddings</span>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentNumberField @bind-Value="_config.MaxTokensPerRequest"
+                                          Label="Max Tokens per Request"
+                                          Min="100" Max="128000"
+                                          Style="width: 100%;" />
+                        <span style="font-size: 12px; color: gray;">Maximum tokens allowed per API request</span>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <label style="font-weight: 500; margin-bottom: 8px; display: block;">Temperature: @_temperature.ToString("F1")</label>
+                        <FluentSlider @bind-Value="_temperature" Min="0" Max="2" Step="0.1f" Style="width: 100%;" />
+                        <span style="font-size: 12px; color: gray;">Lower = more focused, Higher = more creative</span>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                            <FluentButton Appearance="Appearance.Outline" OnClick="TestConnection" Disabled="_isTesting">
+                                @if (_isTesting)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                }
+                                Test Connection
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Accent" OnClick="SaveSettings" Disabled="_isSaving">
+                                @if (_isSaving)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                }
+                                Save Settings
+                            </FluentButton>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+            </FluentCard>
+        }
+        else
+        {
+            <FluentProgressRing />
+        }
+    </FluentTab>
+
+    <FluentTab Label="Test Chat" Id="test-chat">
+        <FluentCard Style="padding: 16px; margin-top: 16px;">
+            <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-bottom: 16px;">
+                Test your AI configuration by sending a message. This helps verify your API key and model settings are working correctly.
+            </FluentMessageBar>
+
+            <FluentTextArea @bind-Value="_testMessage"
+                           Label="Test Message"
+                           Rows="3"
+                           Placeholder="Enter a test message to send to the AI..."
+                           Style="width: 100%; margin-bottom: 16px;" />
+
+            <FluentButton Appearance="Appearance.Accent"
+                         OnClick="SendTestMessage"
+                         Disabled="_isTestingChat || string.IsNullOrWhiteSpace(_testMessage)">
+                @if (_isTestingChat)
+                {
+                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                }
+                Send Test Message
+            </FluentButton>
+
+            @if (!string.IsNullOrEmpty(_testResponse))
+            {
+                <FluentCard Style="margin-top: 16px; padding: 16px; background-color: var(--neutral-layer-2);">
+                    <strong style="display: block; margin-bottom: 8px;">AI Response:</strong>
+                    <div style="white-space: pre-wrap;">@_testResponse</div>
+                </FluentCard>
+            }
+        </FluentCard>
+    </FluentTab>
+</FluentTabs>
+
+@code {
+    private SystemConfiguration? _config;
+    private string _apiKey = "";
+    private bool _showApiKey;
+    private bool _hasExistingApiKey;
+    private float _temperature = 0.7f;
+    private bool _isSaving;
+    private bool _isTesting;
+    private bool _isTestingChat;
+    private string _testMessage = "Hello! Can you confirm you're working correctly?";
+    private string _testResponse = "";
+
+    // SQL Server fields
+    private string _sqlPassword = "";
+    private bool _showSqlPassword;
+    private bool _hasExistingSqlPassword;
+    private bool _isSavingSql;
+    private bool _isTestingSql;
+    private string _sqlConnectionStatus = "";
+    private MessageIntent _sqlConnectionStatusIntent = MessageIntent.Info;
+
+    private readonly string[] _chatModels = { "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo" };
+    private readonly string[] _embeddingModels = { "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfiguration();
+    }
+
+    private async Task LoadConfiguration()
+    {
+        _config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+
+        if (_config == null)
+        {
+            _config = new SystemConfiguration();
+            DbContext.SystemConfiguration.Add(_config);
+            await DbContext.SaveChangesAsync();
+        }
+
+        _temperature = (float)_config.Temperature;
+        _hasExistingApiKey = !string.IsNullOrEmpty(_config.OpenAiApiKey);
+        _hasExistingSqlPassword = !string.IsNullOrEmpty(_config.SqlServerPassword);
+    }
+
+    private string BuildSqlConnectionString(string? passwordOverride = null)
+    {
+        if (_config == null) return "";
+
+        var builder = new SqlConnectionStringBuilder
+        {
+            DataSource = string.IsNullOrEmpty(_config.SqlServerHost)
+                ? ""
+                : (_config.SqlServerPort != 1433 ? $"{_config.SqlServerHost},{_config.SqlServerPort}" : _config.SqlServerHost),
+            InitialCatalog = _config.SqlServerDatabase ?? "",
+            ConnectTimeout = _config.SqlServerConnectionTimeout,
+            TrustServerCertificate = _config.SqlServerTrustServerCertificate
+        };
+
+        if (_config.SqlServerUseIntegratedSecurity)
+        {
+            builder.IntegratedSecurity = true;
+        }
+        else
+        {
+            builder.UserID = _config.SqlServerUsername ?? "";
+            // Use override password or decrypt existing
+            if (!string.IsNullOrWhiteSpace(passwordOverride))
+            {
+                builder.Password = passwordOverride;
+            }
+            else if (!string.IsNullOrEmpty(_config.SqlServerPassword))
+            {
+                try
+                {
+                    builder.Password = SecureConfig.Decrypt(_config.SqlServerPassword);
+                }
+                catch
+                {
+                    builder.Password = "";
+                }
+            }
+        }
+
+        return builder.ConnectionString;
+    }
+
+    private async Task TestSqlConnection()
+    {
+        _isTestingSql = true;
+        _sqlConnectionStatus = "";
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_config?.SqlServerHost))
+            {
+                _sqlConnectionStatus = "Please enter a server host/IP address";
+                _sqlConnectionStatusIntent = MessageIntent.Warning;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_config.SqlServerDatabase))
+            {
+                _sqlConnectionStatus = "Please enter a database name";
+                _sqlConnectionStatusIntent = MessageIntent.Warning;
+                return;
+            }
+
+            // Build connection string with form password if provided
+            var connectionString = BuildSqlConnectionString(
+                !string.IsNullOrWhiteSpace(_sqlPassword) ? _sqlPassword : null);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            // Get server version and database info
+            await using var cmd = new SqlCommand(
+                "SELECT @@VERSION as Version, DB_NAME() as DatabaseName, SUSER_NAME() as CurrentUser",
+                connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            if (await reader.ReadAsync())
+            {
+                var version = reader["Version"]?.ToString()?.Split('\n')[0] ?? "Unknown";
+                var dbName = reader["DatabaseName"]?.ToString() ?? "Unknown";
+                var currentUser = reader["CurrentUser"]?.ToString() ?? "Unknown";
+
+                _sqlConnectionStatus = $"Connected successfully!\n" +
+                    $"Server: {version}\n" +
+                    $"Database: {dbName}\n" +
+                    $"User: {currentUser}";
+                _sqlConnectionStatusIntent = MessageIntent.Success;
+            }
+        }
+        catch (Exception ex)
+        {
+            _sqlConnectionStatus = $"Connection failed: {ex.Message}";
+            _sqlConnectionStatusIntent = MessageIntent.Error;
+            Logger.LogError(ex, "SQL Server connection test failed");
+        }
+        finally
+        {
+            _isTestingSql = false;
+        }
+    }
+
+    private async Task SaveSqlSettings()
+    {
+        if (_config == null) return;
+
+        _isSavingSql = true;
+        try
+        {
+            // Encrypt password if provided
+            if (!string.IsNullOrWhiteSpace(_sqlPassword))
+            {
+                _config.SqlServerPassword = SecureConfig.Encrypt(_sqlPassword);
+                _hasExistingSqlPassword = true;
+            }
+
+            _config.UpdatedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            ToastService.ShowSuccess("SQL Server settings saved successfully!");
+            _sqlPassword = ""; // Clear password field
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save SQL configuration");
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _isSavingSql = false;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        if (_config == null) return;
+
+        _isSaving = true;
+        try
+        {
+            // Only update API key if a new one was provided
+            if (!string.IsNullOrWhiteSpace(_apiKey))
+            {
+                _config.OpenAiApiKey = SecureConfig.Encrypt(_apiKey);
+                _hasExistingApiKey = true;
+            }
+
+            _config.Temperature = (decimal)_temperature;
+            _config.UpdatedAt = DateTime.UtcNow;
+
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess("Settings saved successfully!");
+
+            // Clear the API key field after saving
+            _apiKey = "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save configuration");
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task TestConnection()
+    {
+        _isTesting = true;
+        try
+        {
+            // Get the API key - either from the form or from the saved config
+            var apiKeyToTest = !string.IsNullOrWhiteSpace(_apiKey)
+                ? _apiKey
+                : (_config?.OpenAiApiKey != null ? SecureConfig.Decrypt(_config.OpenAiApiKey) : null);
+
+            if (string.IsNullOrWhiteSpace(apiKeyToTest))
+            {
+                ToastService.ShowWarning("Please enter an API key first");
+                return;
+            }
+
+            // Simple test: just check if the key format looks valid
+            if (!apiKeyToTest.StartsWith("sk-"))
+            {
+                ToastService.ShowWarning("API key should start with 'sk-'");
+                return;
+            }
+
+            // TODO: Add actual API validation call
+            await Task.Delay(500); // Simulate API call
+            ToastService.ShowSuccess("API key format is valid. Save settings and use Test Chat to verify functionality.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to test connection");
+            ToastService.ShowError($"Connection test failed: {ex.Message}");
+        }
+        finally
+        {
+            _isTesting = false;
+        }
+    }
+
+    private async Task SendTestMessage()
+    {
+        _isTestingChat = true;
+        _testResponse = "";
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_config?.OpenAiApiKey))
+            {
+                ToastService.ShowWarning("Please save an API key first");
+                return;
+            }
+
+            // Use the injected IAiChatService to test
+            var messages = new List<ChatMessageDto>
+            {
+                new(Guid.NewGuid(), DataChat.Domain.Enums.MessageRole.User, _testMessage, DateTime.UtcNow)
+            };
+
+            var responseBuilder = new System.Text.StringBuilder();
+            await foreach (var chunk in AiChatService.StreamResponseAsync(messages, null, CancellationToken.None))
+            {
+                responseBuilder.Append(chunk);
+                _testResponse = responseBuilder.ToString();
+                StateHasChanged();
+            }
+
+            ToastService.ShowSuccess("Test message successful!");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send test message");
+            _testResponse = $"Error: {ex.Message}";
+            ToastService.ShowError($"Test failed: {ex.Message}");
+        }
+        finally
+        {
+            _isTestingChat = false;
+        }
+    }
+}

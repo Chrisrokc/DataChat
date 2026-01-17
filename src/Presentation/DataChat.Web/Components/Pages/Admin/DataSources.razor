@@ -1,0 +1,1186 @@
+@page "/admin/datasources"
+@attribute [Authorize(Policy = "AdminOnly")]
+@using Microsoft.EntityFrameworkCore
+@inject IApplicationDbContext DbContext
+@inject IDocumentSyncService SyncService
+@inject IDatabaseConnectionService ConnectionService
+@inject ISecureConfigurationService SecureConfig
+@inject ICurrentUserService CurrentUser
+@inject IToastService ToastService
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject ILogger<DataSources> Logger
+
+<PageTitle>Data Sources</PageTitle>
+
+<h4 style="margin-bottom: 16px;">Data Sources</h4>
+
+<FluentTabs @bind-ActiveTabId="_activeTab" Style="margin-bottom: 16px;">
+    <FluentTab Label="Data Sources" Id="datasources">
+        <FluentIcon Value="@(new Icons.Regular.Size20.Database())" Slot="start" />
+    </FluentTab>
+    <FluentTab Label="DB Connections" Id="connections">
+        <FluentIcon Value="@(new Icons.Regular.Size20.PlugConnected())" Slot="start" />
+    </FluentTab>
+</FluentTabs>
+
+@if (_activeTab == "datasources")
+{
+    @* Data Sources Tab *@
+    <FluentCard Style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h6>Manage Data Sources</h6>
+            <FluentButton Appearance="Appearance.Accent" OnClick="OpenAddDataSourceDialog">
+                Add Data Source
+            </FluentButton>
+        </div>
+
+        @if (_isLoading)
+        {
+            <FluentProgress />
+        }
+        else if (!_dataSources.Any())
+        {
+            <FluentMessageBar Intent="@MessageIntent.Info">
+                No data sources configured. Click "Add Data Source" to create one.
+            </FluentMessageBar>
+        }
+        else
+        {
+            <FluentDataGrid Items="@_dataSources.AsQueryable()" TGridItem="DataSource" Style="width: 100%;">
+                <TemplateColumn Title="Name">
+                    <strong>@context.Name</strong>
+                    @if (!string.IsNullOrEmpty(context.Description))
+                    {
+                        <br /><span style="font-size: 12px; color: gray;">@context.Description</span>
+                    }
+                </TemplateColumn>
+                <TemplateColumn Title="Type">
+                    <FluentBadge Appearance="@(context.Type == DataSourceType.FileSystem ? Appearance.Accent : Appearance.Neutral)">
+                        @context.Type.ToString()
+                    </FluentBadge>
+                </TemplateColumn>
+                <TemplateColumn Title="Path/Connection">
+                    <code style="font-size: 12px;">@GetPathDisplay(context)</code>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    @if (context.IsActive)
+                    {
+                        <FluentBadge BackgroundColor="var(--success)" Color="white">Active</FluentBadge>
+                    }
+                    else
+                    {
+                        <FluentBadge Appearance="Appearance.Neutral">Inactive</FluentBadge>
+                    }
+                    @if (context.FileSystemDataSource?.SyncStatus != null)
+                    {
+                        <FluentBadge BackgroundColor="@GetSyncStatusColor(context.FileSystemDataSource.SyncStatus.Value)" Color="white" Style="margin-left: 4px;">
+                            @context.FileSystemDataSource.SyncStatus
+                        </FluentBadge>
+                    }
+                </TemplateColumn>
+                <TemplateColumn Title="Documents">
+                    @context.Documents.Count documents
+                </TemplateColumn>
+                <TemplateColumn Title="Last Sync">
+                    @(GetLastSyncDisplay(context))
+                </TemplateColumn>
+                <TemplateColumn Title="Actions" Style="width: 150px;">
+                    <FluentButton Appearance="Appearance.Stealth" Title="Sync Now" OnClick="@(() => SyncDataSource(context))"
+                                 Disabled="@(!context.IsActive)">
+                        Sync
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth" Title="Edit" OnClick="@(() => EditDataSource(context))">
+                        Edit
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth" Title="Delete" OnClick="@(() => DeleteDataSource(context))">
+                        Delete
+                    </FluentButton>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+    </FluentCard>
+}
+else
+{
+    @* DB Connections Tab *@
+    <FluentCard Style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h6>Manage Database Connections</h6>
+            <FluentButton Appearance="Appearance.Accent" OnClick="OpenAddConnectionDialog">
+                Add Connection
+            </FluentButton>
+        </div>
+
+        @if (_isLoadingConnections)
+        {
+            <FluentProgress />
+        }
+        else if (!_dbConnections.Any())
+        {
+            <div style="text-align: center; padding: 48px; color: #666;">
+                <FluentIcon Value="@(new Icons.Regular.Size48.Database())" Style="margin-bottom: 16px; opacity: 0.5;" />
+                <p>No database connections configured.</p>
+                <p style="font-size: 14px;">Click "Add Connection" to create your first connection.</p>
+            </div>
+        }
+        else
+        {
+            <FluentDataGrid Items="@_dbConnections.AsQueryable()" TGridItem="DatabaseConnection" Style="width: 100%;">
+                <PropertyColumn Property="@(c => c.Name)" Title="Connection Name" Sortable="true" />
+                <TemplateColumn Title="Server">
+                    <span>@context.ServerHost@(context.Port != 1433 ? $":{context.Port}" : "")</span>
+                </TemplateColumn>
+                <PropertyColumn Property="@(c => c.DatabaseName)" Title="Database" Sortable="true" />
+                <TemplateColumn Title="Auth Type">
+                    <FluentBadge Appearance="@(context.UseWindowsAuth ? Appearance.Accent : Appearance.Neutral)">
+                        @(context.UseWindowsAuth ? "Windows" : "SQL Auth")
+                    </FluentBadge>
+                </TemplateColumn>
+                <TemplateColumn Title="Last Tested">
+                    @if (context.LastTestedAt.HasValue)
+                    {
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            @if (context.LastTestSuccessful == true)
+                            {
+                                <FluentIcon Value="@(new Icons.Regular.Size16.CheckmarkCircle())" Color="Color.Success" />
+                            }
+                            else if (context.LastTestSuccessful == false)
+                            {
+                                <FluentIcon Value="@(new Icons.Regular.Size16.DismissCircle())" Color="Color.Error" />
+                            }
+                            <span style="font-size: 12px;">@context.LastTestedAt.Value.ToString("MMM d, h:mm tt")</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <span style="color: #666; font-size: 12px;">Never</span>
+                    }
+                </TemplateColumn>
+                <TemplateColumn Title="Actions" Style="width: 180px;">
+                    <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => TestConnection(context))" Title="Test Connection">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.PlugConnected())" />
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => OpenEditConnectionDialog(context))" Title="Edit">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.Edit())" />
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => DeleteConnection(context))" Title="Delete">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.Delete())" Color="Color.Error" />
+                    </FluentButton>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+    </FluentCard>
+}
+
+@* Add/Edit Data Source Dialog *@
+<FluentDialog @bind-Hidden="@_dataSourceDialogHidden" Modal="true" TrapFocus="true" Style="width: 500px;">
+    <FluentDialogHeader ShowDismiss="true">
+        <h6>@(_isEditingDataSource ? "Edit Data Source" : "Add Data Source")</h6>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <FluentTextField @bind-Value="_dataSourceModel.Name"
+                            Label="Name"
+                            Required="true"
+                            Style="width: 100%;" />
+
+            <FluentTextArea @bind-Value="_dataSourceModel.Description"
+                           Label="Description"
+                           Rows="2"
+                           Style="width: 100%;" />
+
+            <div>
+                <label style="font-weight: 500; margin-bottom: 4px; display: block;">Type</label>
+                <select @bind="_dataSourceModel.Type" disabled="@_isEditingDataSource" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                    @foreach (var type in Enum.GetValues<DataSourceType>())
+                    {
+                        <option value="@type">@type.ToString()</option>
+                    }
+                </select>
+            </div>
+
+            @if (_dataSourceModel.Type == DataSourceType.FileSystem)
+            {
+                <FluentTextField @bind-Value="_dataSourceModel.FolderPath"
+                                Label="Folder Path"
+                                Required="true"
+                                Placeholder="/path/to/documents"
+                                Style="width: 100%;" />
+                <span style="font-size: 12px; color: gray;">Full path to the folder containing documents</span>
+
+                <FluentTextField @bind-Value="_dataSourceModel.FilePatterns"
+                                Label="File Patterns"
+                                Placeholder="*.pdf;*.docx;*.txt"
+                                Style="width: 100%;" />
+                <span style="font-size: 12px; color: gray;">Semicolon-separated file patterns to include</span>
+
+                <FluentSwitch @bind-Value="_dataSourceModel.IncludeSubfolders" Label="Include Subfolders" />
+            }
+            else if (_dataSourceModel.Type == DataSourceType.SqlView)
+            {
+                <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-bottom: 8px;">
+                    SQL View data sources allow natural language queries against database views.
+                </FluentMessageBar>
+
+                <div>
+                    <label style="font-weight: 500; margin-bottom: 4px; display: block;">Database Connection *</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select @bind="_dataSourceModel.SelectedConnectionId" @bind:after="OnConnectionChanged"
+                                style="flex: 1; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                            <option value="">-- Select a connection --</option>
+                            @foreach (var conn in _availableConnections)
+                            {
+                                <option value="@conn.Id">@conn.Name (@conn.ServerHost/@conn.DatabaseName)</option>
+                            }
+                        </select>
+                        <FluentButton Appearance="Appearance.Stealth" OnClick="@SwitchToConnectionsTab" Title="Manage Connections">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.Settings())" />
+                        </FluentButton>
+                    </div>
+                    @if (!_availableConnections.Any())
+                    {
+                        <span style="font-size: 12px; color: #d13438;">No connections configured. <a href="javascript:void(0)" @onclick="SwitchToConnectionsTab">Create one first</a>.</span>
+                    }
+                    else
+                    {
+                        <span style="font-size: 12px; color: gray;">Select a saved database connection</span>
+                    }
+                </div>
+
+                @if (_dataSourceModel.SelectedConnectionId.HasValue)
+                {
+                    <div>
+                        <label style="font-weight: 500; margin-bottom: 4px; display: block;">Table/View *</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <select @bind="_dataSourceModel.SelectedObjectFullName" @bind:after="OnObjectSelected"
+                                    disabled="@_isLoadingObjects"
+                                    style="flex: 1; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                @if (_isLoadingObjects)
+                                {
+                                    <option value="">Loading...</option>
+                                }
+                                else if (!_availableObjects.Any())
+                                {
+                                    <option value="">-- No tables/views found --</option>
+                                }
+                                else
+                                {
+                                    <option value="">-- Select a table or view --</option>
+                                    @foreach (var obj in _availableObjects)
+                                    {
+                                        <option value="@($"{obj.SchemaName}.{obj.ObjectName}")">@obj.SchemaName.@obj.ObjectName (@obj.ObjectType)</option>
+                                    }
+                                }
+                            </select>
+                            <FluentButton Appearance="Appearance.Stealth" OnClick="RefreshObjects" Disabled="_isLoadingObjects" Title="Refresh">
+                                @if (_isLoadingObjects)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px;" />
+                                }
+                                else
+                                {
+                                    <FluentIcon Value="@(new Icons.Regular.Size16.ArrowSync())" />
+                                }
+                            </FluentButton>
+                        </div>
+                        <span style="font-size: 12px; color: gray;">Select a table or view to query</span>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_dataSourceModel.ViewName))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Success" Style="margin-top: 8px;">
+                        Selected: <strong>@_dataSourceModel.SchemaName.@_dataSourceModel.ViewName</strong>
+                    </FluentMessageBar>
+                }
+            }
+
+            <FluentSwitch @bind-Value="_dataSourceModel.IsActive" Label="Active" />
+        </div>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton OnClick="CloseDataSourceDialog">Cancel</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" OnClick="SaveDataSource" Disabled="_isSavingDataSource">
+            @if (_isSavingDataSource)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+            }
+            Save
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@* Add/Edit Connection Dialog *@
+<FluentDialog @bind-Hidden="_connectionDialogHidden" Modal="true" Style="width: 600px;">
+    <FluentDialogHeader>
+        <h4 style="margin: 0;">@(_isEditingConnection ? "Edit Connection" : "Add Connection")</h4>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentGrid Spacing="3">
+            <FluentGridItem xs="12">
+                <FluentTextField @bind-Value="_connectionModel.Name"
+                                Label="Connection Name"
+                                Required="true"
+                                Placeholder="e.g., Production HR Database"
+                                Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12">
+                <FluentTextArea @bind-Value="_connectionModel.Description"
+                               Label="Description"
+                               Placeholder="Optional description of what this connection is used for"
+                               Rows="2"
+                               Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="8">
+                <FluentTextField @bind-Value="_connectionModel.ServerHost"
+                                Label="Server Host / IP Address"
+                                Required="true"
+                                Placeholder="e.g., 192.168.50.112 or sqlserver.domain.com"
+                                Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="4">
+                <FluentNumberField @bind-Value="_connectionModel.Port"
+                                  Label="Port"
+                                  Min="1" Max="65535"
+                                  Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="6">
+                <FluentTextField @bind-Value="_connectionModel.DatabaseName"
+                                Label="Database Name"
+                                Required="true"
+                                Placeholder="e.g., TestCompanyDB"
+                                Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="6">
+                <FluentNumberField @bind-Value="_connectionModel.ConnectionTimeout"
+                                  Label="Timeout (seconds)"
+                                  Min="5" Max="300"
+                                  Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12">
+                <FluentCheckbox @bind-Value="_connectionModel.UseWindowsAuth"
+                               Label="Use Windows Integrated Security" />
+            </FluentGridItem>
+
+            @if (!_connectionModel.UseWindowsAuth)
+            {
+                <FluentGridItem xs="12" sm="6">
+                    <FluentTextField @bind-Value="_connectionModel.Username"
+                                    Label="Username"
+                                    Placeholder="e.g., sa"
+                                    Style="width: 100%;" />
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentTextField @bind-Value="_connectionModel.Password"
+                                    Label="Password"
+                                    TextFieldType="@(_showPassword ? TextFieldType.Text : TextFieldType.Password)"
+                                    Placeholder="@(_isEditingConnection && _hasExistingPassword ? "Leave blank to keep existing" : "Enter password")"
+                                    Style="width: 100%;">
+                        <span slot="end" @onclick="@(() => _showPassword = !_showPassword)" style="cursor: pointer; display: flex; align-items: center;" title="@(_showPassword ? "Hide password" : "Show password")">
+                            @if (_showPassword)
+                            {
+                                <FluentIcon Value="@(new Icons.Regular.Size20.EyeOff())" />
+                            }
+                            else
+                            {
+                                <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+                            }
+                        </span>
+                    </FluentTextField>
+                </FluentGridItem>
+            }
+
+            <FluentGridItem xs="12">
+                <FluentCheckbox @bind-Value="_connectionModel.TrustServerCertificate"
+                               Label="Trust Server Certificate (for self-signed certificates)" />
+            </FluentGridItem>
+
+            @if (!string.IsNullOrEmpty(_testResult))
+            {
+                <FluentGridItem xs="12">
+                    <FluentMessageBar Intent="@(_testSuccess ? MessageIntent.Success : MessageIntent.Error)">
+                        @_testResult
+                    </FluentMessageBar>
+                </FluentGridItem>
+            }
+        </FluentGrid>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" OnClick="TestConnectionFromDialog" Disabled="_isTesting">
+            @if (_isTesting)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+            }
+            Test Connection
+        </FluentButton>
+        <FluentSpacer />
+        <FluentButton Appearance="Appearance.Outline" OnClick="CloseConnectionDialog">Cancel</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" OnClick="SaveConnection" Disabled="_isSavingConnection">
+            @if (_isSavingConnection)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+            }
+            Save
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    // Tab state
+    private string _activeTab = "datasources";
+
+    // Data Sources state
+    private List<DataSource> _dataSources = new();
+    private bool _isLoading = true;
+    private bool _dataSourceDialogHidden = true;
+    private bool _isEditingDataSource;
+    private bool _isSavingDataSource;
+    private DataSourceEditModel _dataSourceModel = new();
+    private Guid? _editingDataSourceId;
+
+    // Database connection related fields for data source dialog
+    private List<DatabaseConnection> _availableConnections = new();
+    private List<DatabaseObjectInfo> _availableObjects = new();
+    private bool _isLoadingObjects;
+
+    // DB Connections state
+    private List<DatabaseConnection> _dbConnections = new();
+    private bool _isLoadingConnections;
+    private bool _connectionDialogHidden = true;
+    private bool _isEditingConnection;
+    private Guid? _editingConnectionId;
+    private ConnectionEditModel _connectionModel = new();
+    private bool _showPassword;
+    private bool _hasExistingPassword;
+    private bool _isSavingConnection;
+    private bool _isTesting;
+    private string _testResult = "";
+    private bool _testSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataSources();
+        await LoadConnections();
+    }
+
+    #region Data Sources
+
+    private async Task LoadDataSources()
+    {
+        _isLoading = true;
+        try
+        {
+            _dataSources = await DbContext.DataSources
+                .Include(ds => ds.FileSystemDataSource)
+                .Include(ds => ds.SqlViewDataSource)
+                    .ThenInclude(s => s!.DatabaseConnection)
+                .Include(ds => ds.Documents)
+                .OrderBy(ds => ds.Name)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load data sources");
+            ToastService.ShowError($"Failed to load data sources: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetPathDisplay(DataSource ds)
+    {
+        if (ds.Type == DataSourceType.FileSystem)
+        {
+            return ds.FileSystemDataSource?.FolderPath ?? "N/A";
+        }
+        else if (ds.Type == DataSourceType.SqlView)
+        {
+            var sqlDs = ds.SqlViewDataSource;
+            if (sqlDs?.DatabaseConnection != null)
+            {
+                return $"{sqlDs.DatabaseConnection.Name}: {sqlDs.SchemaName}.{sqlDs.ViewName}";
+            }
+            return sqlDs?.ViewName ?? "N/A";
+        }
+        return "N/A";
+    }
+
+    private string GetSyncStatusColor(SyncStatus status)
+    {
+        return status switch
+        {
+            SyncStatus.Pending => "var(--warning)",
+            SyncStatus.InProgress => "var(--info)",
+            SyncStatus.Completed => "var(--success)",
+            SyncStatus.Failed => "var(--error)",
+            _ => "var(--neutral-fill-rest)"
+        };
+    }
+
+    private string GetLastSyncDisplay(DataSource ds)
+    {
+        DateTime? lastSync = ds.Type switch
+        {
+            DataSourceType.FileSystem => ds.FileSystemDataSource?.LastSyncAt,
+            DataSourceType.SqlView => ds.SqlViewDataSource?.LastSyncAt,
+            _ => null
+        };
+        return lastSync?.ToString("MMM dd, HH:mm") ?? "Never";
+    }
+
+    private async Task LoadAvailableConnections()
+    {
+        try
+        {
+            _availableConnections = await DbContext.DatabaseConnections
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load database connections");
+            _availableConnections = new();
+        }
+    }
+
+    private async Task OpenAddDataSourceDialog()
+    {
+        _isEditingDataSource = false;
+        _editingDataSourceId = null;
+        _dataSourceModel = new DataSourceEditModel
+        {
+            Type = DataSourceType.FileSystem,
+            IsActive = true,
+            IncludeSubfolders = true,
+            FilePatterns = "*.pdf;*.docx;*.txt"
+        };
+        _availableObjects = new();
+        await LoadAvailableConnections();
+        _dataSourceDialogHidden = false;
+    }
+
+    private async Task EditDataSource(DataSource ds)
+    {
+        _isEditingDataSource = true;
+        _editingDataSourceId = ds.Id;
+
+        await LoadAvailableConnections();
+        _availableObjects = new();
+
+        _dataSourceModel = new DataSourceEditModel
+        {
+            Name = ds.Name,
+            Description = ds.Description,
+            Type = ds.Type,
+            IsActive = ds.IsActive,
+            FolderPath = ds.FileSystemDataSource?.FolderPath,
+            FilePatterns = ds.FileSystemDataSource?.FilePatterns,
+            IncludeSubfolders = ds.FileSystemDataSource?.IncludeSubfolders ?? true,
+            ConnectionString = ds.SqlViewDataSource?.ConnectionString,
+            ViewName = ds.SqlViewDataSource?.ViewName,
+            SchemaName = ds.SqlViewDataSource?.SchemaName,
+            SelectedConnectionId = ds.SqlViewDataSource?.DatabaseConnectionId
+        };
+
+        // If editing a SqlView with a connection, load the objects and set the selected one
+        if (ds.Type == DataSourceType.SqlView && _dataSourceModel.SelectedConnectionId.HasValue)
+        {
+            await LoadObjectsForConnection(_dataSourceModel.SelectedConnectionId.Value);
+            if (!string.IsNullOrEmpty(_dataSourceModel.SchemaName) && !string.IsNullOrEmpty(_dataSourceModel.ViewName))
+            {
+                _dataSourceModel.SelectedObjectFullName = $"{_dataSourceModel.SchemaName}.{_dataSourceModel.ViewName}";
+            }
+        }
+
+        _dataSourceDialogHidden = false;
+    }
+
+    private void CloseDataSourceDialog()
+    {
+        _dataSourceDialogHidden = true;
+    }
+
+    private void SwitchToConnectionsTab()
+    {
+        _dataSourceDialogHidden = true;
+        _activeTab = "connections";
+    }
+
+    private async Task LoadObjectsForConnection(Guid connectionId)
+    {
+        _isLoadingObjects = true;
+        _availableObjects = new();
+        StateHasChanged();
+
+        try
+        {
+            var objects = await ConnectionService.GetTablesAndViewsAsync(connectionId);
+            _availableObjects = objects.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load tables and views for connection {ConnectionId}", connectionId);
+            ToastService.ShowError($"Failed to load tables/views: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingObjects = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnConnectionChanged()
+    {
+        _dataSourceModel.SelectedObjectFullName = null;
+        _dataSourceModel.ViewName = null;
+        _dataSourceModel.SchemaName = null;
+        _availableObjects = new();
+
+        if (_dataSourceModel.SelectedConnectionId.HasValue)
+        {
+            await LoadObjectsForConnection(_dataSourceModel.SelectedConnectionId.Value);
+        }
+    }
+
+    private void OnObjectSelected()
+    {
+        if (!string.IsNullOrEmpty(_dataSourceModel.SelectedObjectFullName))
+        {
+            var parts = _dataSourceModel.SelectedObjectFullName.Split('.', 2);
+            if (parts.Length == 2)
+            {
+                _dataSourceModel.SchemaName = parts[0];
+                _dataSourceModel.ViewName = parts[1];
+            }
+            else
+            {
+                _dataSourceModel.SchemaName = "dbo";
+                _dataSourceModel.ViewName = _dataSourceModel.SelectedObjectFullName;
+            }
+        }
+        else
+        {
+            _dataSourceModel.SchemaName = null;
+            _dataSourceModel.ViewName = null;
+        }
+    }
+
+    private async Task RefreshObjects()
+    {
+        if (_dataSourceModel.SelectedConnectionId.HasValue)
+        {
+            await LoadObjectsForConnection(_dataSourceModel.SelectedConnectionId.Value);
+        }
+    }
+
+    private async Task SaveDataSource()
+    {
+        if (string.IsNullOrWhiteSpace(_dataSourceModel.Name))
+        {
+            ToastService.ShowError("Name is required");
+            return;
+        }
+
+        if (_dataSourceModel.Type == DataSourceType.FileSystem && string.IsNullOrWhiteSpace(_dataSourceModel.FolderPath))
+        {
+            ToastService.ShowError("Folder path is required");
+            return;
+        }
+
+        if (_dataSourceModel.Type == DataSourceType.SqlView)
+        {
+            if (!_dataSourceModel.SelectedConnectionId.HasValue)
+            {
+                ToastService.ShowError("Database connection is required");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_dataSourceModel.ViewName))
+            {
+                ToastService.ShowError("Table/View selection is required");
+                return;
+            }
+        }
+
+        _isSavingDataSource = true;
+        try
+        {
+            DataSource dataSource;
+
+            if (_isEditingDataSource && _editingDataSourceId.HasValue)
+            {
+                dataSource = await DbContext.DataSources
+                    .Include(ds => ds.FileSystemDataSource)
+                    .Include(ds => ds.SqlViewDataSource)
+                    .FirstAsync(ds => ds.Id == _editingDataSourceId.Value);
+
+                dataSource.Name = _dataSourceModel.Name!;
+                dataSource.Description = _dataSourceModel.Description;
+                dataSource.IsActive = _dataSourceModel.IsActive;
+
+                if (dataSource.Type == DataSourceType.FileSystem && dataSource.FileSystemDataSource != null)
+                {
+                    dataSource.FileSystemDataSource.FolderPath = _dataSourceModel.FolderPath!;
+                    dataSource.FileSystemDataSource.FilePatterns = _dataSourceModel.FilePatterns;
+                    dataSource.FileSystemDataSource.IncludeSubfolders = _dataSourceModel.IncludeSubfolders;
+                }
+                else if (dataSource.Type == DataSourceType.SqlView && dataSource.SqlViewDataSource != null)
+                {
+                    dataSource.SqlViewDataSource.DatabaseConnectionId = _dataSourceModel.SelectedConnectionId;
+                    dataSource.SqlViewDataSource.SchemaName = _dataSourceModel.SchemaName ?? "dbo";
+                    dataSource.SqlViewDataSource.ViewName = _dataSourceModel.ViewName!;
+                    dataSource.SqlViewDataSource.ConnectionString = null; // Clear legacy connection string
+                }
+            }
+            else
+            {
+                dataSource = new DataSource
+                {
+                    Id = Guid.NewGuid(),
+                    Name = _dataSourceModel.Name!,
+                    Description = _dataSourceModel.Description,
+                    Type = _dataSourceModel.Type,
+                    IsActive = _dataSourceModel.IsActive,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                if (_dataSourceModel.Type == DataSourceType.FileSystem)
+                {
+                    dataSource.FileSystemDataSource = new FileSystemDataSource
+                    {
+                        DataSourceId = dataSource.Id,
+                        FolderPath = _dataSourceModel.FolderPath!,
+                        FilePatterns = _dataSourceModel.FilePatterns,
+                        IncludeSubfolders = _dataSourceModel.IncludeSubfolders,
+                        SyncStatus = SyncStatus.Pending
+                    };
+                }
+                else if (_dataSourceModel.Type == DataSourceType.SqlView)
+                {
+                    dataSource.SqlViewDataSource = new SqlViewDataSource
+                    {
+                        DataSourceId = dataSource.Id,
+                        DatabaseConnectionId = _dataSourceModel.SelectedConnectionId,
+                        SchemaName = _dataSourceModel.SchemaName ?? "dbo",
+                        ViewName = _dataSourceModel.ViewName!,
+                        ConnectionString = null // Not using legacy connection string
+                    };
+                }
+
+                DbContext.DataSources.Add(dataSource);
+            }
+
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess(_isEditingDataSource ? "Data source updated!" : "Data source created!");
+            CloseDataSourceDialog();
+            await LoadDataSources();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save data source");
+            ToastService.ShowError($"Failed to save: {ex.Message}");
+        }
+        finally
+        {
+            _isSavingDataSource = false;
+        }
+    }
+
+    private async Task DeleteDataSource(DataSource ds)
+    {
+        var dialog = await DialogService.ShowConfirmationAsync(
+            $"Are you sure you want to delete '{ds.Name}'? This will also delete all indexed documents.",
+            "Delete", "Cancel",
+            "Delete Data Source");
+
+        var result = await dialog.Result;
+        if (result.Cancelled) return;
+
+        try
+        {
+            DbContext.DataSources.Remove(ds);
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess("Data source deleted!");
+            await LoadDataSources();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete data source");
+            ToastService.ShowError($"Failed to delete: {ex.Message}");
+        }
+    }
+
+    private async Task SyncDataSource(DataSource ds)
+    {
+        if (ds.Type != DataSourceType.FileSystem && ds.Type != DataSourceType.SqlView)
+        {
+            ToastService.ShowInfo("Sync is only supported for File System and SQL View data sources");
+            return;
+        }
+
+        try
+        {
+            var job = await SyncService.StartSyncAsync(ds.Id);
+            ToastService.ShowSuccess($"Sync started for '{ds.Name}'! Check Sync Status page for progress.");
+            await LoadDataSources();
+
+            // Optionally navigate to sync status page
+            Navigation.NavigateTo("/admin/sync-status");
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Already syncing
+            ToastService.ShowWarning(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to start sync");
+            ToastService.ShowError($"Failed to start sync: {ex.Message}");
+        }
+    }
+
+    #endregion
+
+    #region DB Connections
+
+    private async Task LoadConnections()
+    {
+        _isLoadingConnections = true;
+        try
+        {
+            _dbConnections = await DbContext.DatabaseConnections
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load database connections");
+            ToastService.ShowError($"Failed to load connections: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingConnections = false;
+        }
+    }
+
+    private void OpenAddConnectionDialog()
+    {
+        _isEditingConnection = false;
+        _editingConnectionId = null;
+        _connectionModel = new ConnectionEditModel
+        {
+            Port = 1433,
+            ConnectionTimeout = 30,
+            TrustServerCertificate = true
+        };
+        _showPassword = false;
+        _hasExistingPassword = false;
+        _testResult = "";
+        _connectionDialogHidden = false;
+    }
+
+    private void OpenEditConnectionDialog(DatabaseConnection connection)
+    {
+        _isEditingConnection = true;
+        _editingConnectionId = connection.Id;
+        _connectionModel = new ConnectionEditModel
+        {
+            Name = connection.Name,
+            Description = connection.Description,
+            ServerHost = connection.ServerHost,
+            Port = connection.Port,
+            DatabaseName = connection.DatabaseName,
+            UseWindowsAuth = connection.UseWindowsAuth,
+            Username = connection.Username,
+            TrustServerCertificate = connection.TrustServerCertificate,
+            ConnectionTimeout = connection.ConnectionTimeout
+        };
+        _showPassword = false;
+        _hasExistingPassword = !string.IsNullOrEmpty(connection.EncryptedPassword);
+        _testResult = "";
+        _connectionDialogHidden = false;
+    }
+
+    private void CloseConnectionDialog()
+    {
+        _connectionDialogHidden = true;
+        _testResult = "";
+    }
+
+    private async Task TestConnectionFromDialog()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionModel.ServerHost) ||
+            string.IsNullOrWhiteSpace(_connectionModel.DatabaseName))
+        {
+            _testResult = "Please fill in Server Host and Database Name";
+            _testSuccess = false;
+            return;
+        }
+
+        _isTesting = true;
+        _testResult = "";
+        StateHasChanged();
+
+        try
+        {
+            // Get password to use for test
+            string? password = null;
+            if (!_connectionModel.UseWindowsAuth)
+            {
+                if (!string.IsNullOrWhiteSpace(_connectionModel.Password))
+                {
+                    password = _connectionModel.Password;
+                }
+                else if (_isEditingConnection && _editingConnectionId.HasValue)
+                {
+                    // Use existing password
+                    var existing = await DbContext.DatabaseConnections
+                        .FirstOrDefaultAsync(c => c.Id == _editingConnectionId.Value);
+                    if (existing != null && !string.IsNullOrEmpty(existing.EncryptedPassword))
+                    {
+                        password = SecureConfig.Decrypt(existing.EncryptedPassword);
+                    }
+                }
+            }
+
+            var result = await ConnectionService.TestConnectionAsync(
+                _connectionModel.ServerHost,
+                _connectionModel.Port,
+                _connectionModel.DatabaseName,
+                _connectionModel.UseWindowsAuth,
+                _connectionModel.Username,
+                password,
+                _connectionModel.TrustServerCertificate,
+                _connectionModel.ConnectionTimeout);
+
+            _testSuccess = result.Success;
+            _testResult = result.Success
+                ? $"Connected successfully! Server: {result.ServerVersion}"
+                : $"Connection failed: {result.ErrorMessage}";
+        }
+        catch (Exception ex)
+        {
+            _testSuccess = false;
+            _testResult = $"Error: {ex.Message}";
+            Logger.LogError(ex, "Connection test failed");
+        }
+        finally
+        {
+            _isTesting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestConnection(DatabaseConnection connection)
+    {
+        try
+        {
+            var result = await ConnectionService.TestConnectionAsync(connection.Id);
+
+            // Update the test status
+            connection.LastTestedAt = DateTime.UtcNow;
+            connection.LastTestSuccessful = result.Success;
+            await DbContext.SaveChangesAsync();
+
+            if (result.Success)
+            {
+                ToastService.ShowSuccess($"Connection successful: {result.ServerVersion}");
+            }
+            else
+            {
+                ToastService.ShowError($"Connection failed: {result.ErrorMessage}");
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Test failed: {ex.Message}");
+            Logger.LogError(ex, "Connection test failed for {ConnectionId}", connection.Id);
+        }
+    }
+
+    private async Task SaveConnection()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionModel.Name))
+        {
+            ToastService.ShowWarning("Please enter a connection name");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_connectionModel.ServerHost))
+        {
+            ToastService.ShowWarning("Please enter a server host");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_connectionModel.DatabaseName))
+        {
+            ToastService.ShowWarning("Please enter a database name");
+            return;
+        }
+
+        _isSavingConnection = true;
+        StateHasChanged();
+
+        try
+        {
+            var currentUser = CurrentUser.DisplayName ?? "System";
+
+            if (_isEditingConnection && _editingConnectionId.HasValue)
+            {
+                // Update existing
+                var connection = await DbContext.DatabaseConnections
+                    .FirstOrDefaultAsync(c => c.Id == _editingConnectionId.Value);
+
+                if (connection != null)
+                {
+                    connection.Name = _connectionModel.Name;
+                    connection.Description = _connectionModel.Description;
+                    connection.ServerHost = _connectionModel.ServerHost;
+                    connection.Port = _connectionModel.Port;
+                    connection.DatabaseName = _connectionModel.DatabaseName;
+                    connection.UseWindowsAuth = _connectionModel.UseWindowsAuth;
+                    connection.Username = _connectionModel.Username;
+                    connection.TrustServerCertificate = _connectionModel.TrustServerCertificate;
+                    connection.ConnectionTimeout = _connectionModel.ConnectionTimeout;
+                    connection.UpdatedAt = DateTime.UtcNow;
+                    connection.UpdatedBy = currentUser;
+
+                    // Only update password if provided
+                    if (!string.IsNullOrWhiteSpace(_connectionModel.Password))
+                    {
+                        connection.EncryptedPassword = SecureConfig.Encrypt(_connectionModel.Password);
+                    }
+                }
+            }
+            else
+            {
+                // Create new
+                var connection = new DatabaseConnection
+                {
+                    Id = Guid.NewGuid(),
+                    Name = _connectionModel.Name,
+                    Description = _connectionModel.Description,
+                    ServerHost = _connectionModel.ServerHost,
+                    Port = _connectionModel.Port,
+                    DatabaseName = _connectionModel.DatabaseName,
+                    UseWindowsAuth = _connectionModel.UseWindowsAuth,
+                    Username = _connectionModel.Username,
+                    TrustServerCertificate = _connectionModel.TrustServerCertificate,
+                    ConnectionTimeout = _connectionModel.ConnectionTimeout,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = currentUser
+                };
+
+                if (!string.IsNullOrWhiteSpace(_connectionModel.Password))
+                {
+                    connection.EncryptedPassword = SecureConfig.Encrypt(_connectionModel.Password);
+                }
+
+                DbContext.DatabaseConnections.Add(connection);
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadConnections();
+            await LoadAvailableConnections(); // Refresh for data source dialog
+
+            ToastService.ShowSuccess(_isEditingConnection ? "Connection updated" : "Connection created");
+            CloseConnectionDialog();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique") == true ||
+                                           ex.InnerException?.Message.Contains("duplicate") == true)
+        {
+            ToastService.ShowError("A connection with this name already exists");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save: {ex.Message}");
+            Logger.LogError(ex, "Failed to save database connection");
+        }
+        finally
+        {
+            _isSavingConnection = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteConnection(DatabaseConnection connection)
+    {
+        // Check if any data sources use this connection
+        var usageCount = await DbContext.SqlViewDataSources
+            .CountAsync(s => s.DatabaseConnectionId == connection.Id);
+
+        if (usageCount > 0)
+        {
+            ToastService.ShowWarning($"Cannot delete: {usageCount} data source(s) use this connection");
+            return;
+        }
+
+        // Confirm deletion
+        var dialog = await DialogService.ShowConfirmationAsync(
+            $"Are you sure you want to delete the connection '{connection.Name}'?",
+            "Delete", "Cancel",
+            "Delete Connection");
+
+        var result = await dialog.Result;
+        if (result.Cancelled) return;
+
+        DbContext.DatabaseConnections.Remove(connection);
+        await DbContext.SaveChangesAsync();
+        await LoadConnections();
+
+        ToastService.ShowSuccess("Connection deleted");
+    }
+
+    #endregion
+
+    #region Models
+
+    private class DataSourceEditModel
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public DataSourceType Type { get; set; }
+        public bool IsActive { get; set; }
+
+        // FileSystem specific
+        public string? FolderPath { get; set; }
+        public string? FilePatterns { get; set; }
+        public bool IncludeSubfolders { get; set; }
+
+        // SqlView specific (legacy - kept for backward compatibility)
+        public string? ConnectionString { get; set; }
+        public string? ViewName { get; set; }
+        public string? SchemaName { get; set; }
+
+        // SqlView specific (new - using DatabaseConnection)
+        public Guid? SelectedConnectionId { get; set; }
+        public string? SelectedObjectFullName { get; set; }
+    }
+
+    private class ConnectionEditModel
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public string ServerHost { get; set; } = "";
+        public int Port { get; set; } = 1433;
+        public string DatabaseName { get; set; } = "";
+        public bool UseWindowsAuth { get; set; }
+        public string? Username { get; set; }
+        public string? Password { get; set; }
+        public bool TrustServerCertificate { get; set; } = true;
+        public int ConnectionTimeout { get; set; } = 30;
+    }
+
+    #endregion
+}
