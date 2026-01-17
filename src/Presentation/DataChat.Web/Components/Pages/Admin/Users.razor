@@ -310,8 +310,13 @@
 
         try
         {
-            user.IsActive = !user.IsActive;
-            await DbContext.SaveChangesAsync();
+            var dbUser = await DbContext.Users.FindAsync(user.Id);
+            if (dbUser != null)
+            {
+                dbUser.IsActive = !dbUser.IsActive;
+                await DbContext.SaveChangesAsync();
+                user.IsActive = dbUser.IsActive;
+            }
             ToastService.ShowSuccess($"User {action}d successfully!");
             StateHasChanged();
         }

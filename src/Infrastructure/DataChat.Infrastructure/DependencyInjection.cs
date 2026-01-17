@@ -25,9 +25,10 @@ public static class DependencyInjection
             options.UseSqlServer(connectionString, sqlOptions =>
             {
                 sqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
                     errorNumbersToAdd: null);
+                sqlOptions.CommandTimeout(60);
             }));
 
         services.AddScoped<IApplicationDbContext>(provider =>

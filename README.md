@@ -22,7 +22,7 @@ A modern enterprise AI chat application with RAG (Retrieval-Augmented Generation
 
 ## Screenshots
 
-*Coming soon*
+![DataChat Interface](docs/images/screenshot.png)
 
 ## Technology Stack
 
@@ -48,7 +48,7 @@ Before you begin, ensure you have the following installed:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/DataChat.git
+git clone https://github.com/Chrisrokc/DataChat.git
 cd DataChat
 ```
 
@@ -304,8 +304,10 @@ DataChat/
 │   │   └── DataChat.Infrastructure/ # EF Core, OpenAI, vector store
 │   └── Presentation/
 │       └── DataChat.Web/           # Blazor UI, API endpoints
+├── docs/
+│   └── images/                     # Screenshots and documentation images
 ├── scripts/
-│   └── create_test_data.sql                 # Sample data script
+│   └── create_test_data.sql        # Sample data script
 └── README.md
 ```
 
@@ -342,15 +344,6 @@ Enable in `appsettings.json`:
 }
 ```
 
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/login` | POST | Authenticate user |
-| `/logout` | GET | Sign out |
-| `/api/setup-admin` | GET | Reset admin password |
-| `/api/auth-test` | GET | Debug auth state |
-
 ## Deployment
 
 ### Development
@@ -358,7 +351,7 @@ Enable in `appsettings.json`:
 dotnet run --project src/Presentation/DataChat.Web
 ```
 
-### Production
+### Production (Kestrel)
 ```bash
 dotnet publish -c Release -o ./publish
 cd publish
@@ -370,6 +363,195 @@ You can override settings with environment variables:
 ```bash
 export ConnectionStrings__DefaultConnection="Server=...;Database=...;"
 ```
+
+---
+
+## Deploying to IIS
+
+DataChat can be hosted on IIS (Internet Information Services) for production deployments on Windows Server.
+
+### Prerequisites
+
+1. **Windows Server** with IIS installed
+2. **.NET 8 Hosting Bundle** - Download and install from [Microsoft .NET Downloads](https://dotnet.microsoft.com/download/dotnet/8.0)
+3. **SQL Server 2025** accessible from the IIS server
+
+### Step 1: Install the .NET Hosting Bundle
+
+1. Download the **.NET 8.0 Hosting Bundle** (not just the runtime)
+2. Run the installer on your Windows Server
+3. **Restart IIS** after installation:
+   ```cmd
+   net stop was /y
+   net start w3svc
+   ```
+
+### Step 2: Publish the Application
+
+On your development machine, publish the application:
+
+```bash
+dotnet publish src/Presentation/DataChat.Web/DataChat.Web.csproj -c Release -o ./publish
+```
+
+Copy the contents of the `./publish` folder to your IIS server (e.g., `C:\inetpub\wwwroot\DataChat`).
+
+### Step 3: Create the IIS Site
+
+1. Open **IIS Manager**
+2. Right-click **Sites** > **Add Website**
+3. Configure:
+   - **Site name**: `DataChat`
+   - **Physical path**: `C:\inetpub\wwwroot\DataChat`
+   - **Binding**: Choose your IP, port (e.g., 80 or 443), and hostname
+4. Click **OK**
+
+### Step 4: Configure the Application Pool
+
+1. In IIS Manager, go to **Application Pools**
+2. Find the pool created for DataChat (or create a new one)
+3. Right-click > **Basic Settings**:
+   - **.NET CLR Version**: `No Managed Code`
+   - **Managed pipeline mode**: `Integrated`
+4. Right-click > **Advanced Settings**:
+   - **Start Mode**: `AlwaysRunning` (recommended for Blazor Server)
+   - **Idle Time-out (minutes)**: `0` (prevents app pool recycling)
+
+### Step 5: Configure web.config
+
+The publish process creates a `web.config` file. Verify it looks like this:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <location path="." inheritInChildApplications="false">
+    <system.webServer>
+      <handlers>
+        <add name="aspNetCore" path="*" verb="*" modules="AspNetCoreModuleV2" resourceType="Unspecified" />
+      </handlers>
+      <aspNetCore processPath="dotnet"
+                  arguments=".\DataChat.Web.dll"
+                  stdoutLogEnabled="false"
+                  stdoutLogFile=".\logs\stdout"
+                  hostingModel="inprocess">
+        <environmentVariables>
+          <environmentVariable name="ASPNETCORE_ENVIRONMENT" value="Production" />
+        </environmentVariables>
+      </aspNetCore>
+    </system.webServer>
+  </location>
+</configuration>
+```
+
+### Step 6: Configure appsettings.Production.json
+
+Create `appsettings.Production.json` in the publish folder:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=YOUR_SQL_SERVER;Database=DataChat;User Id=datachat_user;Password=YOUR_PASSWORD;TrustServerCertificate=True;"
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Warning"
+    }
+  }
+}
+```
+
+### Step 7: Set Folder Permissions
+
+The IIS application pool identity needs permissions:
+
+1. Right-click the DataChat folder > **Properties** > **Security**
+2. Click **Edit** > **Add**
+3. Enter: `IIS AppPool\DataChat` (replace "DataChat" with your app pool name)
+4. Grant **Read & Execute** permissions
+5. For the `logs` folder (if using stdout logging), grant **Write** permissions
+
+### Step 8: Configure HTTPS (Recommended)
+
+1. Obtain an SSL certificate (Let's Encrypt, commercial CA, or self-signed for testing)
+2. In IIS Manager, select your site > **Bindings**
+3. Add an HTTPS binding (port 443) and select your certificate
+4. Optionally, add URL Rewrite rules to redirect HTTP to HTTPS
+
+### Step 9: Enable WebSockets
+
+Blazor Server requires WebSockets:
+
+1. In **Server Manager** > **Add Roles and Features**
+2. Navigate to **Web Server (IIS)** > **Web Server** > **Application Development**
+3. Check **WebSocket Protocol**
+4. Complete the installation
+
+Or via PowerShell:
+```powershell
+Install-WindowsFeature Web-WebSockets
+```
+
+### Step 10: Configure Windows Authentication (Optional)
+
+If using Windows Authentication:
+
+1. In IIS Manager, select your site
+2. Double-click **Authentication**
+3. Enable **Windows Authentication**
+4. Disable **Anonymous Authentication** (or keep both enabled for mixed mode)
+5. Update `appsettings.Production.json`:
+   ```json
+   {
+     "Authentication": {
+       "Mode": "Windows",
+       "WindowsAuth": {
+         "Enabled": true,
+         "AutoProvisionUsers": true,
+         "DefaultRole": "User"
+       }
+     }
+   }
+   ```
+
+### Troubleshooting IIS Deployment
+
+#### 500.19 - Configuration Error
+- Ensure the .NET Hosting Bundle is installed
+- Check that the `web.config` is valid XML
+
+#### 502.5 - Process Failure
+- Enable stdout logging in `web.config` (`stdoutLogEnabled="true"`)
+- Check `.\logs\stdout*.log` for errors
+- Verify the connection string is correct
+- Ensure SQL Server is accessible from the IIS server
+
+#### 503 - Service Unavailable
+- Check if the Application Pool is running
+- Verify the app pool identity has folder permissions
+
+#### Blazor SignalR Connection Issues
+- Ensure WebSockets are enabled in IIS
+- Check that no proxy/load balancer is blocking WebSocket connections
+- Verify the app pool idle timeout is set to 0
+
+#### View Logs
+Enable stdout logging temporarily:
+```xml
+<aspNetCore ... stdoutLogEnabled="true" stdoutLogFile=".\logs\stdout">
+```
+
+Create the `logs` folder and grant write permissions to the app pool identity.
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/login` | POST | Authenticate user |
+| `/logout` | GET | Sign out |
+| `/api/setup-admin` | GET | Reset admin password |
+| `/api/auth-test` | GET | Debug auth state |
 
 ## Security Considerations
 
