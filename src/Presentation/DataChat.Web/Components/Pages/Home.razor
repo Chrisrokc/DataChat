@@ -59,6 +59,38 @@
         body.dark-theme .attachment-thumb-file { background: #333; }
         body.dark-theme .attachment-thumb-file span { color: #ccc; }
 
+        /* Message timestamp styles */
+        body.dark-theme .message-timestamp { color: #666 !important; }
+        .chat-bubble.user .message-timestamp { color: rgba(255, 255, 255, 0.7) !important; }
+
+        /* Message action buttons (copy, edit, regenerate) */
+        .message-actions { display: flex; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity 0.15s ease; }
+        .chat-bubble:hover .message-actions { opacity: 1; }
+        .message-action-btn { background: transparent; border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; color: #666; transition: all 0.15s ease; }
+        .message-action-btn:hover { background: rgba(0, 0, 0, 0.05); border-color: rgba(0, 0, 0, 0.2); color: #333; }
+        .message-action-btn svg { width: 14px; height: 14px; }
+        body.dark-theme .message-action-btn { border-color: rgba(255, 255, 255, 0.1); color: #999; }
+        body.dark-theme .message-action-btn:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.2); color: #ddd; }
+        .chat-bubble.user .message-action-btn { border-color: rgba(255, 255, 255, 0.2); color: rgba(255, 255, 255, 0.8); }
+        .chat-bubble.user .message-action-btn:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.3); color: white; }
+        .chat-bubble.user .message-action-btn svg { fill: currentColor; }
+
+        /* Search input styles */
+        body.dark-theme .search-input { background: rgba(50, 50, 50, 0.9) !important; border-color: rgba(255, 255, 255, 0.1) !important; color: #e8e8e8; }
+        body.dark-theme .search-input::placeholder { color: #888; }
+
+        /* Chat header styles */
+        body.dark-theme .chat-header { border-bottom-color: rgba(255, 255, 255, 0.08) !important; }
+        body.dark-theme .chat-title { color: #e8e8e8 !important; }
+        body.dark-theme .export-btn { border-color: rgba(255, 255, 255, 0.1) !important; color: #999 !important; }
+        body.dark-theme .export-btn:hover { background: rgba(255, 255, 255, 0.08) !important; }
+        body.dark-theme .export-menu { background: #2a2a2a !important; border-color: rgba(255, 255, 255, 0.1) !important; }
+        body.dark-theme .export-menu-item { color: #ddd !important; }
+        body.dark-theme .export-menu-item:hover { background: rgba(255, 255, 255, 0.08) !important; }
+
+        /* Export menu hover */
+        .export-menu-item:hover { background: rgba(0, 0, 0, 0.05); }
+
         /* Drag and drop styles */
         .drop-zone { transition: all 0.2s ease; }
         .drop-zone.drag-over { background: rgba(0, 120, 212, 0.1); border: 2px dashed #0078d4 !important; }
@@ -79,6 +111,28 @@
                 }
             });
         };
+
+        window.copyToClipboard = async function(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                console.error('Failed to copy:', err);
+                return false;
+            }
+        };
+
+        window.downloadFile = function(filename, content, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
     </script>
 </HeadContent>
 
@@ -86,15 +140,28 @@
     @* Chat Sidebar *@
     <div class="glass-card" style="width: 280px; padding: 16px; display: flex; flex-direction: column;">
         <button @onclick="CreateNewChat"
-                style="width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #0078d4, #106ebe); color: white; border: none; border-radius: 20px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
+                style="width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #0078d4, #106ebe); color: white; border: none; border-radius: 20px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;">
             <svg width="16" height="16" viewBox="0 0 20 20" fill="white">
                 <path d="M10 2.5C10.2761 2.5 10.5 2.72386 10.5 3V9.5H17C17.2761 9.5 17.5 9.72386 17.5 10C17.5 10.2761 17.2761 10.5 17 10.5H10.5V17C10.5 17.2761 10.2761 17.5 10 17.5C9.72386 17.5 9.5 17.2761 9.5 17V10.5H3C2.72386 10.5 2.5 10.2761 2.5 10C2.5 9.72386 2.72386 9.5 3 9.5H9.5V3C9.5 2.72386 9.72386 2.5 10 2.5Z"/>
             </svg>
             New Chat
         </button>
 
+        @* Search Input *@
+        <div class="search-container" style="position: relative; margin-bottom: 12px;">
+            <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px;" viewBox="0 0 20 20" fill="#888">
+                <path d="M8.5 3a5.5 5.5 0 014.383 8.823l4.147 4.147a.75.75 0 01-1.06 1.06l-4.147-4.147A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z"/>
+            </svg>
+            <input type="text"
+                   placeholder="Search chats..."
+                   value="@_searchQuery"
+                   @oninput="OnSearchChanged"
+                   class="search-input"
+                   style="width: 100%; padding: 10px 12px 10px 36px; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; font-size: 14px; background: rgba(255,255,255,0.8); outline: none;" />
+        </div>
+
         <div style="flex: 1; overflow-y: auto;">
-            @foreach (var chat in _chats)
+            @foreach (var chat in _filteredChats)
             {
                 <div class="chat-item" @onclick="() => SelectChat(chat)"
                      style="padding: 12px 16px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; @(chat.Id == _selectedChat?.Id ? "background: rgba(0, 120, 212, 0.1);" : "")">
@@ -122,6 +189,33 @@
     <div class="glass-card" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
         @if (_selectedChat != null)
         {
+            @* Chat Header with Export *@
+            <div class="chat-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-bottom: 1px solid rgba(0,0,0,0.06);">
+                <h3 class="chat-title" style="margin: 0; font-size: 16px; font-weight: 500; color: #242424; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@_selectedChat.Title</h3>
+                <div class="export-dropdown" style="position: relative;">
+                    <button @onclick="ToggleExportMenu" class="export-btn" style="background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #666;">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 2a.75.75 0 01.75.75v7.69l2.22-2.22a.75.75 0 111.06 1.06l-3.5 3.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06l2.22 2.22V2.75A.75.75 0 0110 2zM3.5 13.75a.75.75 0 00-1.5 0v1.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-1.5a.75.75 0 00-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-1.5z"/>
+                        </svg>
+                        Export
+                    </button>
+                    @if (_showExportMenu)
+                    {
+                        <div class="export-menu" style="position: absolute; right: 0; top: 100%; margin-top: 4px; background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 140px;">
+                            <button @onclick='() => ExportChatAndCloseMenu("markdown")' class="export-menu-item" style="display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #333;">
+                                Markdown (.md)
+                            </button>
+                            <button @onclick='() => ExportChatAndCloseMenu("json")' class="export-menu-item" style="display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #333;">
+                                JSON (.json)
+                            </button>
+                            <button @onclick='() => ExportChatAndCloseMenu("text")' class="export-menu-item" style="display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #333;">
+                                Plain Text (.txt)
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
             @* Messages Area *@
             <div style="flex: 1; overflow-y: auto; padding: 24px;" @ref="_messagesContainer">
                 @if (!_messages.Any() && !_isStreaming)
@@ -189,7 +283,49 @@
                                     }
                                 </div>
                             }
-                            <div style="white-space: pre-wrap; line-height: 1.6;">@message.Content</div>
+                            @if (_editingMessageId == message.Id)
+                            {
+                                @* Edit mode *@
+                                <div style="margin-top: 8px;">
+                                    <textarea @bind="_editMessageContent" style="width: 100%; min-height: 60px; padding: 8px; border-radius: 8px; border: 1px solid #0078d4; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+                                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                        <button @onclick="() => SaveEditedMessage(message)" class="message-action-btn" style="background: #0078d4; color: white; border: none;">
+                                            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M7.5 13.5L4 10l-1 1 4.5 4.5 9-9-1-1z"/></svg>
+                                            Save & Regenerate
+                                        </button>
+                                        <button @onclick="CancelEdit" class="message-action-btn">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="white-space: pre-wrap; line-height: 1.6;">@message.Content</div>
+                            }
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
+                                <div class="message-timestamp" style="font-size: 11px; color: #888;">
+                                    @FormatTimestamp(message.CreatedAt)
+                                </div>
+                                <div class="message-actions" style="@(message.Role == MessageRole.User ? "justify-content: flex-end;" : "")">
+                                    <button class="message-action-btn" @onclick="() => CopyMessage(message.Content)" title="Copy message">
+                                        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 2a2 2 0 00-2 2v10a2 2 0 002 2h6a2 2 0 002-2V4a2 2 0 00-2-2H8zM6 4a2 2 0 012-2h.5v1H8a1 1 0 00-1 1v10a1 1 0 001 1h6a1 1 0 001-1V4a1 1 0 00-1-1h-.5V2H14a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V4z"/><path d="M4 6a2 2 0 012-2h.5v1H6a1 1 0 00-1 1v10a1 1 0 001 1h6a1 1 0 001-1v-.5h1v.5a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"/></svg>
+                                        Copy
+                                    </button>
+                                    @if (message.Role == MessageRole.User && _editingMessageId != message.Id)
+                                    {
+                                        <button class="message-action-btn" @onclick="() => StartEditMessage(message)" title="Edit message">
+                                            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M14.846 1.403a2.45 2.45 0 013.465 3.465l-9.193 9.192a1.5 1.5 0 01-.536.335l-4.5 1.5a.75.75 0 01-.949-.949l1.5-4.5a1.5 1.5 0 01.335-.536l9.193-9.192a.75.75 0 01.685.685z"/></svg>
+                                            Edit
+                                        </button>
+                                    }
+                                    @if (message.Role == MessageRole.Assistant)
+                                    {
+                                        <button class="message-action-btn" @onclick="() => RegenerateResponse(message)" title="Regenerate response" disabled="@_isStreaming">
+                                            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H4.75a.75.75 0 00-.75.75v3.482a.75.75 0 001.5 0v-1.975l.243.245a7 7 0 0011.71-3.144.75.75 0 00-1.141-.013zm-10.624-4.85a5.5 5.5 0 019.201-2.465l.312.31H12.27a.75.75 0 000 1.5h3.482a.75.75 0 00.75-.75V1.687a.75.75 0 00-1.5 0v1.975l-.243-.245a7 7 0 00-11.71 3.144.75.75 0 001.14.013z"/></svg>
+                                            Regenerate
+                                        </button>
+                                    }
+                                </div>
+                            </div>
                         </div>
                     }
                     @if (_isStreaming)
@@ -294,6 +430,7 @@
 
 @code {
     private List<ChatDto> _chats = new();
+    private List<ChatDto> _filteredChats = new();
     private List<ChatMessageDto> _messages = new();
     private ChatDto? _selectedChat;
     private string _userInput = "";
@@ -302,6 +439,16 @@
     private ElementReference _messagesContainer;
     private CancellationTokenSource? _streamingCts;
     private string _aiAssistantName = "Assistant";
+
+    // Edit message state
+    private Guid? _editingMessageId;
+    private string _editMessageContent = "";
+
+    // Search state
+    private string _searchQuery = "";
+
+    // Export menu state
+    private bool _showExportMenu;
 
     // File upload state
     private List<MessageAttachmentDto> _pendingAttachments = new();
@@ -342,6 +489,7 @@
     private async Task LoadChats()
     {
         _chats = (await Mediator.Send(new GetUserChatsQuery())).ToList();
+        FilterChats();
     }
 
     private async Task CreateNewChat()
@@ -677,4 +825,351 @@
 
     private static string GetFileExtension(string fileName) =>
         Path.GetExtension(fileName).TrimStart('.').ToUpperInvariant();
+
+    private static string FormatTimestamp(DateTime utcTime)
+    {
+        var localTime = utcTime.ToLocalTime();
+        var today = DateTime.Today;
+        var yesterday = today.AddDays(-1);
+
+        if (localTime.Date == today)
+            return $"Today at {localTime:h:mm tt}";
+        if (localTime.Date == yesterday)
+            return $"Yesterday at {localTime:h:mm tt}";
+        if (localTime.Year == today.Year)
+            return localTime.ToString("MMM d 'at' h:mm tt");
+        return localTime.ToString("MMM d, yyyy 'at' h:mm tt");
+    }
+
+    // Copy message to clipboard
+    private async Task CopyMessage(string content)
+    {
+        var success = await JSRuntime.InvokeAsync<bool>("copyToClipboard", content);
+        if (success)
+            ToastService.ShowSuccess("Copied to clipboard");
+        else
+            ToastService.ShowError("Failed to copy to clipboard");
+    }
+
+    // Edit message functionality
+    private void StartEditMessage(ChatMessageDto message)
+    {
+        _editingMessageId = message.Id;
+        _editMessageContent = message.Content;
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingMessageId = null;
+        _editMessageContent = "";
+        StateHasChanged();
+    }
+
+    private async Task SaveEditedMessage(ChatMessageDto message)
+    {
+        if (string.IsNullOrWhiteSpace(_editMessageContent) || _selectedChat == null)
+            return;
+
+        try
+        {
+            // Find the message index
+            var messageIndex = _messages.FindIndex(m => m.Id == message.Id);
+            if (messageIndex < 0) return;
+
+            // Delete all messages after this one from the database
+            var messagesToDelete = _messages.Skip(messageIndex + 1).ToList();
+            foreach (var msgToDelete in messagesToDelete)
+            {
+                var dbMsg = await DbContext.ChatMessages.FindAsync(msgToDelete.Id);
+                if (dbMsg != null)
+                    DbContext.ChatMessages.Remove(dbMsg);
+            }
+
+            // Update the edited message in database
+            var editedMsg = await DbContext.ChatMessages.FindAsync(message.Id);
+            if (editedMsg != null)
+            {
+                editedMsg.Content = _editMessageContent;
+            }
+            await DbContext.SaveChangesAsync();
+
+            // Update local state
+            _messages = _messages.Take(messageIndex).ToList();
+            _messages.Add(new ChatMessageDto(
+                message.Id,
+                message.Role,
+                _editMessageContent,
+                message.CreatedAt,
+                null,
+                message.Attachments));
+
+            _editingMessageId = null;
+            _editMessageContent = "";
+
+            // Regenerate AI response
+            await RegenerateFromHistory();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save edit: {ex.Message}");
+        }
+    }
+
+    // Regenerate response functionality
+    private async Task RegenerateResponse(ChatMessageDto assistantMessage)
+    {
+        if (_selectedChat == null || _isStreaming) return;
+
+        try
+        {
+            // Find the assistant message index
+            var messageIndex = _messages.FindIndex(m => m.Id == assistantMessage.Id);
+            if (messageIndex < 0) return;
+
+            // Delete this message and all after from database
+            var messagesToDelete = _messages.Skip(messageIndex).ToList();
+            foreach (var msgToDelete in messagesToDelete)
+            {
+                var dbMsg = await DbContext.ChatMessages.FindAsync(msgToDelete.Id);
+                if (dbMsg != null)
+                    DbContext.ChatMessages.Remove(dbMsg);
+            }
+            await DbContext.SaveChangesAsync();
+
+            // Update local state to exclude deleted messages
+            _messages = _messages.Take(messageIndex).ToList();
+            StateHasChanged();
+
+            // Regenerate AI response
+            await RegenerateFromHistory();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to regenerate: {ex.Message}");
+        }
+    }
+
+    private async Task RegenerateFromHistory()
+    {
+        if (_selectedChat == null || !_messages.Any()) return;
+
+        _isStreaming = true;
+        _streamingContent = "";
+        _streamingCts = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            // Build conversation history
+            var conversationHistory = _messages
+                .Select(m => new ChatMessageDto(m.Id, m.Role, m.Content, m.CreatedAt, null, m.Attachments))
+                .ToList();
+
+            // Get RAG context
+            string? systemPrompt = null;
+            var accessibleDataSourceIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
+            var lastUserMessage = _messages.LastOrDefault(m => m.Role == MessageRole.User);
+
+            if (accessibleDataSourceIds.Any() && lastUserMessage != null)
+            {
+                try
+                {
+                    var queryEmbedding = await EmbeddingService.GenerateEmbeddingAsync(lastUserMessage.Content, _streamingCts.Token);
+                    var searchResults = await VectorStore.SearchAsync(queryEmbedding, topK: 5, accessibleDataSourceIds, _streamingCts.Token);
+
+                    if (searchResults.Any())
+                    {
+                        var ragContext = string.Join("\n\n---\n\n", searchResults.Select(r => r.Content));
+                        systemPrompt = "You are a helpful AI assistant with access to organizational documents.\n" +
+                            "Use the provided context to answer questions accurately.\n" +
+                            "If the context doesn't contain relevant information, say so clearly.\n" +
+                            "Always cite which document or section you're referencing when possible.\n\n" +
+                            "## Relevant Context:\n" + ragContext;
+                    }
+                }
+                catch { /* Continue without RAG */ }
+            }
+
+            // Stream response
+            var responseBuilder = new System.Text.StringBuilder();
+            await foreach (var chunk in AiChatService.StreamResponseAsync(conversationHistory, systemPrompt, _streamingCts.Token))
+            {
+                responseBuilder.Append(chunk);
+                _streamingContent = responseBuilder.ToString();
+                StateHasChanged();
+            }
+
+            // Save assistant message
+            if (!string.IsNullOrEmpty(_streamingContent))
+            {
+                var assistantMsg = new ChatMessage
+                {
+                    Id = Guid.NewGuid(),
+                    ChatId = _selectedChat.Id,
+                    Role = MessageRole.Assistant,
+                    Content = _streamingContent,
+                    CreatedAt = DateTimeService.UtcNow
+                };
+                DbContext.ChatMessages.Add(assistantMsg);
+                await DbContext.SaveChangesAsync(_streamingCts.Token);
+
+                _messages.Add(new ChatMessageDto(
+                    assistantMsg.Id,
+                    MessageRole.Assistant,
+                    _streamingContent,
+                    assistantMsg.CreatedAt));
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isStreaming = false;
+            _streamingContent = "";
+            _streamingCts?.Dispose();
+            _streamingCts = null;
+            StateHasChanged();
+        }
+    }
+
+    // Search functionality
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        FilterChats();
+    }
+
+    private void FilterChats()
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _filteredChats = _chats;
+        }
+        else
+        {
+            var query = _searchQuery.ToLowerInvariant();
+            _filteredChats = _chats.Where(c => c.Title.ToLowerInvariant().Contains(query)).ToList();
+        }
+        StateHasChanged();
+    }
+
+    // Export functionality
+    private async Task ExportChat(string format)
+    {
+        if (_selectedChat == null || !_messages.Any())
+        {
+            ToastService.ShowWarning("No messages to export");
+            return;
+        }
+
+        string content;
+        string filename;
+        string mimeType;
+
+        switch (format.ToLowerInvariant())
+        {
+            case "markdown":
+                content = GenerateMarkdownExport();
+                filename = $"{SanitizeFilename(_selectedChat.Title)}.md";
+                mimeType = "text/markdown";
+                break;
+            case "json":
+                content = GenerateJsonExport();
+                filename = $"{SanitizeFilename(_selectedChat.Title)}.json";
+                mimeType = "application/json";
+                break;
+            case "text":
+            default:
+                content = GenerateTextExport();
+                filename = $"{SanitizeFilename(_selectedChat.Title)}.txt";
+                mimeType = "text/plain";
+                break;
+        }
+
+        await JSRuntime.InvokeVoidAsync("downloadFile", filename, content, mimeType);
+        ToastService.ShowSuccess($"Chat exported as {format}");
+    }
+
+    private string GenerateMarkdownExport()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"# {_selectedChat!.Title}");
+        sb.AppendLine($"*Exported on {DateTime.Now:MMMM d, yyyy 'at' h:mm tt}*");
+        sb.AppendLine();
+        sb.AppendLine("---");
+        sb.AppendLine();
+
+        foreach (var msg in _messages)
+        {
+            var role = msg.Role == MessageRole.User ? "**You**" : $"**{_aiAssistantName}**";
+            var timestamp = FormatTimestamp(msg.CreatedAt);
+            sb.AppendLine($"### {role} ({timestamp})");
+            sb.AppendLine();
+            sb.AppendLine(msg.Content);
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private string GenerateJsonExport()
+    {
+        var export = new
+        {
+            title = _selectedChat!.Title,
+            exportedAt = DateTime.UtcNow,
+            messages = _messages.Select(m => new
+            {
+                role = m.Role.ToString(),
+                content = m.Content,
+                timestamp = m.CreatedAt,
+                hasAttachments = m.Attachments?.Any() ?? false
+            })
+        };
+        return JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private string GenerateTextExport()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(_selectedChat!.Title);
+        sb.AppendLine(new string('=', _selectedChat.Title.Length));
+        sb.AppendLine($"Exported on {DateTime.Now:MMMM d, yyyy 'at' h:mm tt}");
+        sb.AppendLine();
+
+        foreach (var msg in _messages)
+        {
+            var role = msg.Role == MessageRole.User ? "You" : _aiAssistantName;
+            var timestamp = FormatTimestamp(msg.CreatedAt);
+            sb.AppendLine($"[{role}] ({timestamp})");
+            sb.AppendLine(msg.Content);
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private static string SanitizeFilename(string filename)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = string.Join("_", filename.Split(invalid, StringSplitOptions.RemoveEmptyEntries));
+        return sanitized.Length > 50 ? sanitized[..50] : sanitized;
+    }
+
+    // Export menu helpers
+    private void ToggleExportMenu()
+    {
+        _showExportMenu = !_showExportMenu;
+        StateHasChanged();
+    }
+
+    private async Task ExportChatAndCloseMenu(string format)
+    {
+        _showExportMenu = false;
+        await ExportChat(format);
+    }
 }
