@@ -315,6 +315,72 @@ try
         return Results.Ok("Admin password has been reset to 'admin123'. Please change it after logging in.");
     }).AllowAnonymous();
 
+    // Document access endpoint for secure, time-limited file access
+    app.MapGet("/api/documents/access/{token}", async (
+        string token,
+        HttpContext context,
+        DataChat.Application.Common.Interfaces.IDocumentAccessTokenService tokenService,
+        DataChat.Application.Common.Interfaces.IApplicationDbContext dbContext,
+        DataChat.Application.Common.Interfaces.ICurrentUserService currentUser) =>
+    {
+        // 1. Validate token
+        var tokenResult = tokenService.ValidateToken(token);
+        if (tokenResult == null)
+        {
+            Log.Warning("Invalid or expired document access token");
+            return Results.NotFound("Invalid or expired access link");
+        }
+
+        // 2. Verify current user matches token's user
+        var currentUserId = currentUser.UserId;
+        if (currentUserId == null || currentUserId != tokenResult.UserId)
+        {
+            Log.Warning("Document access denied: User {CurrentUser} tried to access token for user {TokenUser}",
+                currentUserId, tokenResult.UserId);
+            return Results.Forbid();
+        }
+
+        // 3. Load document with DataSource
+        var document = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.Include(dbContext.Documents, d => d.DataSource),
+            d => d.Id == tokenResult.DocumentId);
+
+        if (document == null)
+        {
+            Log.Warning("Document {DocumentId} not found", tokenResult.DocumentId);
+            return Results.NotFound("Document not found");
+        }
+
+        // 4. Verify DataSource.Type == FileSystem
+        if (document.DataSource.Type != DataChat.Domain.Enums.DataSourceType.FileSystem)
+        {
+            Log.Warning("Attempt to access non-file document {DocumentId} of type {Type}",
+                tokenResult.DocumentId, document.DataSource.Type);
+            return Results.BadRequest("This document type does not support direct file access");
+        }
+
+        // 5. Verify file exists
+        if (!System.IO.File.Exists(document.FilePath))
+        {
+            Log.Warning("Document file not found at path: {FilePath}", document.FilePath);
+            return Results.NotFound("Document file not found on server");
+        }
+
+        // 6. Log the access for audit
+        Log.Information("Document access: User {UserId} accessing document {DocumentId} ({FileName}) via message {MessageId}, IsDownload: {IsDownload}",
+            currentUserId, document.Id, document.FileName, tokenResult.MessageId, tokenResult.IsDownload);
+
+        // 7. Stream file with appropriate Content-Type and Content-Disposition
+        var mimeType = document.MimeType ?? "application/octet-stream";
+        var contentDisposition = tokenResult.IsDownload
+            ? $"attachment; filename=\"{document.FileName}\""
+            : $"inline; filename=\"{document.FileName}\"";
+
+        context.Response.Headers.Append("Content-Disposition", contentDisposition);
+
+        return Results.File(document.FilePath, mimeType);
+    }).RequireAuthorization();
+
     // Map SignalR Hub
     app.MapHub<ChatHub>("/chathub");
 

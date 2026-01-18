@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using DataChat.Application.Common.Interfaces;
 using DataChat.Application.Features.Chat.DTOs;
 using DataChat.Domain.Enums;
@@ -17,6 +18,7 @@ public class ChatHub : Hub
     private readonly IAiChatService _aiChatService;
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IDocumentAccessTokenService _tokenService;
     private readonly IDateTimeService _dateTime;
     private readonly ILogger<ChatHub> _logger;
 
@@ -26,6 +28,7 @@ public class ChatHub : Hub
         IAiChatService aiChatService,
         IVectorStore vectorStore,
         IEmbeddingService embeddingService,
+        IDocumentAccessTokenService tokenService,
         IDateTimeService dateTime,
         ILogger<ChatHub> logger)
     {
@@ -34,6 +37,7 @@ public class ChatHub : Hub
         _aiChatService = aiChatService;
         _vectorStore = vectorStore;
         _embeddingService = embeddingService;
+        _tokenService = tokenService;
         _dateTime = dateTime;
         _logger = logger;
     }
@@ -80,6 +84,7 @@ public class ChatHub : Hub
         // Get RAG context if needed
         string? systemPrompt = null;
         var usedDataSourceIds = new List<Guid>();
+        var sourceChunks = new List<SourceChunkDto>();
 
         if (dataSourceIds?.Any() == true)
         {
@@ -95,6 +100,62 @@ public class ChatHub : Hub
                 {
                     var ragContext = string.Join("\n\n---\n\n", searchResults.Select(r => r.Content));
                     usedDataSourceIds = searchResults.Select(r => r.DataSourceId).Distinct().ToList();
+
+                    // Get document and data source details for source preview with secure access tokens
+                    var documentIds = searchResults.Select(r => r.DocumentId).Distinct().ToList();
+                    var documents = await _dbContext.Documents
+                        .Where(d => documentIds.Contains(d.Id))
+                        .Include(d => d.DataSource)
+                        .Select(d => new {
+                            d.Id,
+                            d.FileName,
+                            d.MimeType,
+                            d.DataSourceId,
+                            DataSourceName = d.DataSource.Name,
+                            DataSourceType = d.DataSource.Type
+                        })
+                        .ToDictionaryAsync(d => d.Id, cancellationToken);
+
+                    // Get admin settings for document access features
+                    var config = await _dbContext.SystemConfiguration.FirstOrDefaultAsync(cancellationToken);
+                    var enableDocumentPreview = config?.EnableDocumentPreview ?? true;
+                    var enableDocumentDownload = config?.EnableDocumentDownload ?? true;
+
+                    // Generate a temporary message ID for token generation (will be updated after save)
+                    var tempMessageId = Guid.NewGuid();
+                    var userId = _currentUser.UserId!.Value;
+
+                    sourceChunks = searchResults.Select(r =>
+                    {
+                        var doc = documents.GetValueOrDefault(r.DocumentId);
+                        var isFileSystem = doc?.DataSourceType == DataSourceType.FileSystem;
+
+                        // Generate secure tokens only for file-based sources
+                        string? viewToken = null;
+                        string? downloadToken = null;
+
+                        if (isFileSystem)
+                        {
+                            if (enableDocumentPreview)
+                                viewToken = _tokenService.GenerateToken(r.DocumentId, userId, tempMessageId, isDownload: false);
+                            if (enableDocumentDownload)
+                                downloadToken = _tokenService.GenerateToken(r.DocumentId, userId, tempMessageId, isDownload: true);
+                        }
+
+                        return new SourceChunkDto(
+                            ChunkId: r.DocumentChunkId,
+                            DocumentId: r.DocumentId,
+                            DataSourceId: r.DataSourceId,
+                            DocumentName: doc?.FileName ?? "Unknown Document",
+                            DataSourceName: doc?.DataSourceName ?? "Unknown Source",
+                            Content: r.Content,
+                            Score: r.Score,
+                            ChunkIndex: null,
+                            DataSourceType: doc?.DataSourceType.ToString(),
+                            MimeType: doc?.MimeType,
+                            ViewToken: viewToken,
+                            DownloadToken: downloadToken);
+                    }).ToList();
 
                     systemPrompt = $"""
                         You are a helpful AI assistant with access to organizational documents.
@@ -120,7 +181,7 @@ public class ChatHub : Hub
             yield return chunk;
         }
 
-        // Save assistant message
+        // Save assistant message with source chunks for preview
         var assistantMsg = new Domain.Entities.ChatMessage
         {
             Id = Guid.NewGuid(),
@@ -128,7 +189,10 @@ public class ChatHub : Hub
             Role = MessageRole.Assistant,
             Content = responseBuilder.ToString(),
             DataSourcesUsed = usedDataSourceIds.Any()
-                ? System.Text.Json.JsonSerializer.Serialize(usedDataSourceIds)
+                ? JsonSerializer.Serialize(usedDataSourceIds)
+                : null,
+            SourceChunksJson = sourceChunks.Any()
+                ? JsonSerializer.Serialize(sourceChunks)
                 : null,
             CreatedAt = _dateTime.UtcNow
         };

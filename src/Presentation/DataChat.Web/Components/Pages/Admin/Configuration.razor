@@ -248,6 +248,107 @@
             }
         </FluentCard>
     </FluentTab>
+
+    <FluentTab Label="RAG Settings" Id="rag-settings">
+        @if (_config != null)
+        {
+            <FluentCard Style="padding: 16px; margin-top: 16px;">
+                <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-bottom: 16px;">
+                    Configure Retrieval-Augmented Generation (RAG) settings for document-based chat responses.
+                </FluentMessageBar>
+
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="12">
+                        <FluentCheckbox @bind-Value="_config.EnableSourcePreview"
+                                       Label="Enable Source Preview" />
+                        <div style="margin-left: 28px; font-size: 12px; color: gray; margin-top: 4px;">
+                            When enabled, users can click to view the actual document chunks that were used to generate RAG responses.
+                            This provides transparency about which sources informed the AI's answer.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <hr style="border: none; border-top: 1px solid var(--neutral-stroke-rest); margin: 16px 0;" />
+                        <h5 style="margin: 0 0 12px 0;">Document Access</h5>
+                        <div style="font-size: 12px; color: gray; margin-bottom: 12px;">
+                            Control how users can access the original source documents from RAG responses.
+                            These options only apply to file-based data sources.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <FluentCheckbox @bind-Value="_config.EnableDocumentPreview"
+                                       Label="Enable Document Preview (In-Browser Viewing)" />
+                        <div style="margin-left: 28px; font-size: 12px; color: gray; margin-top: 4px;">
+                            Allow users to view documents directly in the browser. Documents open in a new tab.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <FluentCheckbox @bind-Value="_config.EnableDocumentDownload"
+                                       Label="Enable Document Download" />
+                        <div style="margin-left: 28px; font-size: 12px; color: gray; margin-top: 4px;">
+                            Allow users to download the original source documents to their computer.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentNumberField @bind-Value="_config.DocumentAccessTokenExpirationMinutes"
+                                          Label="Access Link Expiration (minutes)"
+                                          Min="1" Max="60"
+                                          Style="width: 100%;" />
+                        <div style="font-size: 12px; color: gray; margin-top: 4px;">
+                            How long document access links remain valid. Links are user-specific and cannot be shared.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <hr style="border: none; border-top: 1px solid var(--neutral-stroke-rest); margin: 16px 0;" />
+                        <h5 style="margin: 0 0 12px 0;">Source Filtering</h5>
+                        <div style="font-size: 12px; color: gray; margin-bottom: 12px;">
+                            Control which sources are displayed to users based on relevance.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentNumberField @bind-Value="_config.SourcePreviewMinRelevance"
+                                          Label="Minimum Relevance (%)"
+                                          Min="0" Max="100"
+                                          Style="width: 100%;" />
+                        <div style="font-size: 12px; color: gray; margin-top: 4px;">
+                            Only show sources with relevance above this threshold. Set to 0 to show all sources.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentNumberField @bind-Value="_config.SourcePreviewMaxSources"
+                                          Label="Maximum Sources to Display"
+                                          Min="1" Max="10"
+                                          Style="width: 100%;" />
+                        <div style="font-size: 12px; color: gray; margin-top: 4px;">
+                            Limit the number of sources shown in the preview dialog.
+                        </div>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                            <FluentButton Appearance="Appearance.Accent" OnClick="SaveRagSettings" Disabled="_isSavingRag">
+                                @if (_isSavingRag)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                }
+                                Save RAG Settings
+                            </FluentButton>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+            </FluentCard>
+        }
+        else
+        {
+            <FluentProgressRing />
+        }
+    </FluentTab>
 </FluentTabs>
 
 @code {
@@ -270,6 +371,9 @@
     private bool _isTestingSql;
     private string _sqlConnectionStatus = "";
     private MessageIntent _sqlConnectionStatusIntent = MessageIntent.Info;
+
+    // RAG settings
+    private bool _isSavingRag;
 
     private readonly string[] _chatModels = { "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo" };
     private readonly string[] _embeddingModels = { "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002" };
@@ -537,6 +641,28 @@
         finally
         {
             _isTestingChat = false;
+        }
+    }
+
+    private async Task SaveRagSettings()
+    {
+        if (_config == null) return;
+
+        _isSavingRag = true;
+        try
+        {
+            _config.UpdatedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess("RAG settings saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save RAG configuration");
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _isSavingRag = false;
         }
     }
 }

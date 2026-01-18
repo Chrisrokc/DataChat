@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<ISecureConfigurationService, SecureConfigurationService>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();
         services.AddScoped<IDatabaseConnectionService, DatabaseConnectionService>();
+        services.AddScoped<IDocumentAccessTokenService, DocumentAccessTokenService>();
 
         // AI Services
         services.AddScoped<IAiChatService, OpenAiChatService>();

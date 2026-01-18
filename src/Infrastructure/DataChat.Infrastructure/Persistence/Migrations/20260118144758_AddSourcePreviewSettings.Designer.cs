@@ -4,6 +4,7 @@ using DataChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DataChat.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260118144758_AddSourcePreviewSettings")]
+    partial class AddSourcePreviewSettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -821,21 +824,12 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(18,10)")
                         .HasDefaultValue(0.00003m);
 
-                    b.Property<int>("DocumentAccessTokenExpirationMinutes")
-                        .HasColumnType("int");
-
                     b.Property<string>("EmbeddingModel")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
                         .HasDefaultValue("text-embedding-ada-002");
-
-                    b.Property<bool>("EnableDocumentDownload")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("EnableDocumentPreview")
-                        .HasColumnType("bit");
 
                     b.Property<bool>("EnableSourcePreview")
                         .HasColumnType("bit");
@@ -859,12 +853,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
                         .HasDefaultValue("gpt-4o");
-
-                    b.Property<int>("SourcePreviewMaxSources")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SourcePreviewMinRelevance")
-                        .HasColumnType("int");
 
                     b.Property<int>("SqlServerConnectionTimeout")
                         .HasColumnType("int");
@@ -922,16 +910,11 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                             CostAlertThreshold = 80m,
                             CostPerInputToken = 0.00001m,
                             CostPerOutputToken = 0.00003m,
-                            DocumentAccessTokenExpirationMinutes = 10,
                             EmbeddingModel = "text-embedding-ada-002",
-                            EnableDocumentDownload = true,
-                            EnableDocumentPreview = true,
                             EnableSourcePreview = true,
                             MaxTokensPerRequest = 4096,
                             MonthlyCostBudget = 0m,
                             OpenAiModel = "gpt-4o",
-                            SourcePreviewMaxSources = 5,
-                            SourcePreviewMinRelevance = 0,
                             SqlServerConnectionTimeout = 30,
                             SqlServerPort = 1433,
                             SqlServerTrustServerCertificate = true,

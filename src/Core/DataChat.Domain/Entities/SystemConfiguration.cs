@@ -39,6 +39,14 @@ public class SystemConfiguration
     public bool CostAlertEnabled { get; set; } = false;
     public decimal CostAlertThreshold { get; set; } = 80; // Percentage of budget
 
+    // RAG Settings
+    public bool EnableSourcePreview { get; set; } = true; // Allow users to preview document chunks used in RAG responses
+    public bool EnableDocumentPreview { get; set; } = true; // Allow in-browser document viewing
+    public bool EnableDocumentDownload { get; set; } = true; // Allow document download
+    public int DocumentAccessTokenExpirationMinutes { get; set; } = 10; // Token validity period (1-60 minutes)
+    public int SourcePreviewMinRelevance { get; set; } = 0; // Minimum relevance % to show in source preview (0-100, 0 = show all)
+    public int SourcePreviewMaxSources { get; set; } = 5; // Maximum number of sources to display (1-10)
+
     public DateTime? UpdatedAt { get; set; }
     public string? UpdatedBy { get; set; }
 }

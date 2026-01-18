@@ -13,6 +13,7 @@
 @inject IVectorStore VectorStore
 @inject IApplicationDbContext DbContext
 @inject IDateTimeService DateTimeService
+@inject IDocumentAccessTokenService TokenService
 @inject NavigationManager Navigation
 @inject IToastService ToastService
 @inject IJSRuntime JSRuntime
@@ -232,6 +233,73 @@
         .drop-zone.drag-over { background: rgba(0, 120, 212, 0.1); border: 2px dashed #0078d4 !important; }
         .drop-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 120, 212, 0.1); border: 3px dashed #0078d4; z-index: 9999; display: flex; align-items: center; justify-content: center; pointer-events: none; }
         .drop-overlay-text { background: white; padding: 24px 48px; border-radius: 12px; font-size: 18px; font-weight: 500; color: #0078d4; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+
+        /* Source preview styles */
+        .source-indicator { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 14px; background: rgba(0, 120, 212, 0.06); border: 1px solid rgba(0, 120, 212, 0.15); border-radius: 8px; cursor: pointer; transition: all 0.15s ease; }
+        .source-indicator:hover { background: rgba(0, 120, 212, 0.1); border-color: rgba(0, 120, 212, 0.25); }
+        .source-indicator-icon { width: 20px; height: 20px; color: #0078d4; flex-shrink: 0; }
+        .source-indicator-text { font-size: 13px; color: #0078d4; font-weight: 500; }
+        .source-indicator-count { background: #0078d4; color: white; font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 10px; }
+        body.dark-theme .source-indicator { background: rgba(0, 120, 212, 0.12); border-color: rgba(0, 120, 212, 0.25); }
+        body.dark-theme .source-indicator:hover { background: rgba(0, 120, 212, 0.18); border-color: rgba(0, 120, 212, 0.35); }
+        body.dark-theme .source-indicator-text { color: #4da6ff; }
+        body.dark-theme .source-indicator-icon { color: #4da6ff; }
+
+        /* Source preview dialog styles */
+        .source-dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .source-dialog { background: white; border-radius: 12px; width: 90%; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+        body.dark-theme .source-dialog { background: #2a2a2a; color: #e8e8e8; }
+        .source-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+        body.dark-theme .source-dialog-header { border-bottom-color: rgba(255, 255, 255, 0.1); }
+        .source-dialog-title { font-size: 18px; font-weight: 600; margin: 0; }
+        .source-dialog-close { background: transparent; border: none; padding: 8px; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+        .source-dialog-close:hover { background: rgba(0, 0, 0, 0.08); }
+        body.dark-theme .source-dialog-close:hover { background: rgba(255, 255, 255, 0.1); }
+        .source-dialog-content { flex: 1; overflow-y: auto; padding: 16px 20px; }
+        .source-chunk { padding: 16px; margin-bottom: 12px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; }
+        body.dark-theme .source-chunk { background: #333; border-color: #444; }
+        .source-chunk:last-child { margin-bottom: 0; }
+        .source-chunk-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .source-chunk-doc { font-weight: 600; font-size: 14px; color: #333; }
+        body.dark-theme .source-chunk-doc { color: #e8e8e8; }
+        .source-chunk-source { font-size: 12px; color: #666; background: rgba(0, 0, 0, 0.05); padding: 2px 8px; border-radius: 4px; }
+        body.dark-theme .source-chunk-source { background: rgba(255, 255, 255, 0.1); color: #aaa; }
+        .source-chunk-score { font-size: 11px; color: #0078d4; font-weight: 500; margin-left: auto; }
+        .source-chunk-content { font-size: 13px; line-height: 1.6; color: #444; white-space: pre-wrap; max-height: 200px; overflow-y: auto; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e8e8e8; }
+        body.dark-theme .source-chunk-content { background: #2a2a2a; border-color: #444; color: #ddd; }
+        .source-chunk-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8e8e8; }
+        body.dark-theme .source-chunk-actions { border-top-color: #444; }
+        .source-action-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; font-weight: 500; border-radius: 4px; text-decoration: none; transition: all 0.15s ease; }
+        .source-action-btn-view { background: #0078d4; color: white; }
+        .source-action-btn-view:hover { background: #106ebe; color: white; }
+        .source-action-btn-download { background: #107c10; color: white; }
+        .source-action-btn-download:hover { background: #0e6b0e; color: white; }
+        body.dark-theme .source-action-btn-view { background: #3b9bdb; }
+        body.dark-theme .source-action-btn-view:hover { background: #5aade6; }
+        body.dark-theme .source-action-btn-download { background: #36a336; }
+        body.dark-theme .source-action-btn-download:hover { background: #48b948; }
+        .source-chunk-db-ref { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8e8e8; font-size: 12px; color: #666; font-style: italic; display: flex; align-items: center; gap: 6px; }
+        body.dark-theme .source-chunk-db-ref { border-top-color: #444; color: #999; }
+        .source-type-icon { width: 16px; height: 16px; opacity: 0.7; }
+
+        /* Data source selector styles */
+        .datasource-selector { position: relative; }
+        .datasource-dropdown { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 320px; max-height: 300px; overflow-y: auto; z-index: 100; }
+        body.dark-theme .datasource-dropdown { background: #2a2a2a; border-color: #444; }
+        .datasource-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.1s; }
+        .datasource-item:hover { background: #f5f5f5; }
+        body.dark-theme .datasource-item:hover { background: #333; }
+        .datasource-item input[type="checkbox"] { margin: 0; width: 18px; height: 18px; flex-shrink: 0; }
+        .datasource-item-name { width: 120px; flex-shrink: 0; font-size: 14px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .datasource-item-meta { width: 70px; flex-shrink: 0; font-size: 11px; color: #888; text-align: right; }
+        .datasource-item-type { width: 75px; flex-shrink: 0; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #e8e8e8; color: #666; text-align: center; }
+        body.dark-theme .datasource-item-type { background: #444; color: #aaa; }
+        .datasource-actions { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #eee; background: #fafafa; border-radius: 8px 8px 0 0; }
+        body.dark-theme .datasource-actions { background: #333; border-bottom-color: #444; }
+        .datasource-action-link { font-size: 12px; background: transparent; border: 1px solid #ddd; color: #333; cursor: pointer; padding: 6px 12px; border-radius: 4px; font-weight: 500; white-space: nowrap; display: inline-block; }
+        .datasource-action-link:hover { background: #e8e8e8; border-color: #ccc; }
+        body.dark-theme .datasource-action-link { background: transparent; border-color: #555; color: #ddd; }
+        body.dark-theme .datasource-action-link:hover { background: #444; border-color: #666; }
     </style>
     <script>
         window.setupDropZone = function(dropZoneId, inputId) {
@@ -545,6 +613,17 @@
                                 @if (message.Role == MessageRole.Assistant)
                                 {
                                     <div class="markdown-content">@((MarkupString)RenderMarkdown(message.Content))</div>
+                                    @* Source Preview Indicator *@
+                                    @if (_enableSourcePreview && message.SourceChunks?.Any() == true)
+                                    {
+                                        <div class="source-indicator" @onclick="() => ShowSourcePreview(message.SourceChunks)" title="Click to view sources">
+                                            <svg class="source-indicator-icon" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"/>
+                                            </svg>
+                                            <span class="source-indicator-text">Sources used in this response</span>
+                                            <span class="source-indicator-count">@message.SourceChunks.Count()</span>
+                                        </div>
+                                    }
                                 }
                                 else
                                 {
@@ -654,6 +733,50 @@
                      @ondragleave="HandleDragLeave" @ondragleave:preventDefault
                      @ondragover:preventDefault
                      @ondrop="HandleDrop" @ondrop:preventDefault>
+                    @* Data Source Selector - only show if multiple sources available *@
+                    @if (_availableDataSources.Count > 1)
+                    {
+                        <div class="datasource-selector">
+                            <div class="upload-btn"
+                                 @onclick="ToggleDataSourceDropdown"
+                                 @onclick:stopPropagation="true"
+                                 title="Select data sources to search"
+                                 style="@(_isStreaming ? "opacity: 0.4; cursor: not-allowed;" : "cursor: pointer;")">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="#0078d4">
+                                    <path d="M10 1C5.58 1 2 2.34 2 4v12c0 1.66 3.58 3 8 3s8-1.34 8-3V4c0-1.66-3.58-3-8-3zm0 2c3.87 0 6 1.12 6 1s-2.13 1-6 1-6-1.12-6-1 2.13-1 6-1zM4 6.47C5.31 7.14 7.5 7.5 10 7.5s4.69-.36 6-1.03V9c0 .11-2.13 1-6 1s-6-.89-6-1V6.47zm0 5C5.31 12.14 7.5 12.5 10 12.5s4.69-.36 6-1.03V14c0 .11-2.13 1-6 1s-6-.89-6-1v-2.53zm0 5C5.31 17.14 7.5 17.5 10 17.5s4.69-.36 6-1.03V17c0 .11-2.13 1-6 1s-6-.89-6-1v-.53z"/>
+                                </svg>
+                                @if (_selectedDataSourceIds.Count < _availableDataSources.Count)
+                                {
+                                    <span style="font-size: 11px; font-weight: 600; color: #0078d4; margin-left: 4px;">@_selectedDataSourceIds.Count</span>
+                                }
+                            </div>
+
+                            @if (_showDataSourceDropdown)
+                            {
+                                <div class="datasource-dropdown" @onclick:stopPropagation="true">
+                                    <div class="datasource-actions">
+                                        <button type="button" class="datasource-action-link" @onclick="SelectAllDataSources">
+                                            All
+                                        </button>
+                                        <button type="button" class="datasource-action-link clear" @onclick="ClearDataSourceSelection">
+                                            Clear
+                                        </button>
+                                    </div>
+                                    @foreach (var ds in _availableDataSources)
+                                    {
+                                        <div class="datasource-item" @onclick="() => ToggleDataSource(ds.Id)">
+                                            <input type="checkbox" checked="@_selectedDataSourceIds.Contains(ds.Id)"
+                                                   @onclick:stopPropagation="true" @onchange="() => ToggleDataSource(ds.Id)" />
+                                            <span class="datasource-item-name">@ds.Name</span>
+                                            <span class="datasource-item-meta">@ds.DocumentCount @(ds.Type == "SqlView" ? "rows" : "docs")</span>
+                                            <span class="datasource-item-type">@ds.Type</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
                     @* Upload Button - using label for reliable file input trigger *@
                     <label for="fileUploadInput" class="upload-btn" style="@(_isStreaming ? "opacity: 0.4; cursor: not-allowed;" : "")" title="Attach file (images, PDF, text)">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="#0078d4">
@@ -763,6 +886,84 @@
     </div>
 }
 
+@* Source Preview Dialog *@
+@if (_showSourcePreviewDialog && _previewSourceChunks != null)
+{
+    <div class="source-dialog-overlay" @onclick="CloseSourcePreview">
+        <div class="source-dialog" @onclick:stopPropagation="true">
+            <div class="source-dialog-header">
+                <h3 class="source-dialog-title">Document Sources (@_previewSourceChunks.Count())</h3>
+                <button class="source-dialog-close" @onclick="CloseSourcePreview" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M4.089 4.216l.057-.07a.5.5 0 01.638-.057l.07.057L10 9.293l5.146-5.147a.5.5 0 01.638-.057l.07.057a.5.5 0 01.057.638l-.057.07L10.707 10l5.147 5.146a.5.5 0 01.057.638l-.057.07a.5.5 0 01-.638.057l-.07-.057L10 10.707l-5.146 5.147a.5.5 0 01-.638.057l-.07-.057a.5.5 0 01-.057-.638l.057-.07L9.293 10 4.146 4.854a.5.5 0 01-.057-.638l.057-.07-.057.07z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="source-dialog-content">
+                <p style="font-size: 13px; color: #666; margin-bottom: 16px;">
+                    These document chunks were retrieved from your data sources and used to inform the AI's response.
+                </p>
+                @foreach (var chunk in _previewSourceChunks.OrderByDescending(c => c.Score))
+                {
+                    <div class="source-chunk">
+                        <div class="source-chunk-header">
+                            @* File type icon based on MimeType *@
+                            @if (!string.IsNullOrEmpty(chunk.MimeType))
+                            {
+                                <span class="source-type-icon" title="@chunk.MimeType">
+                                    @GetFileTypeIcon(chunk.MimeType)
+                                </span>
+                            }
+                            <span class="source-chunk-doc">@chunk.DocumentName</span>
+                            <span class="source-chunk-source">@chunk.DataSourceName</span>
+                            <span class="source-chunk-score">@((chunk.Score * 100).ToString("F0"))% relevance</span>
+                        </div>
+                        <div class="source-chunk-content">@chunk.Content</div>
+
+                        @* Action buttons or database reference *@
+                        @if (chunk.DataSourceType == "FileSystem")
+                        {
+                            @if ((_enableDocumentPreview && !string.IsNullOrEmpty(chunk.ViewToken)) ||
+                                 (_enableDocumentDownload && !string.IsNullOrEmpty(chunk.DownloadToken)))
+                            {
+                                <div class="source-chunk-actions">
+                                    @if (_enableDocumentPreview && !string.IsNullOrEmpty(chunk.ViewToken))
+                                    {
+                                        <a href="/api/documents/access/@chunk.ViewToken" target="_blank" class="source-action-btn source-action-btn-view">
+                                            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M10 3C4.5 3 1 10 1 10s3.5 7 9 7 9-7 9-7-3.5-7-9-7zm0 11.5a4.5 4.5 0 110-9 4.5 4.5 0 010 9zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/>
+                                            </svg>
+                                            View Document
+                                        </a>
+                                    }
+                                    @if (_enableDocumentDownload && !string.IsNullOrEmpty(chunk.DownloadToken))
+                                    {
+                                        <a href="/api/documents/access/@chunk.DownloadToken" class="source-action-btn source-action-btn-download">
+                                            <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M10 13.5l-4-4h2.5V3h3v6.5H14l-4 4zM16 15v2H4v-2H2v4h16v-4h-2z"/>
+                                            </svg>
+                                            Download
+                                        </a>
+                                    }
+                                </div>
+                            }
+                        }
+                        else if (chunk.DataSourceType == "SqlView")
+                        {
+                            <div class="source-chunk-db-ref">
+                                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M10 2C6.5 2 3 3 3 5v10c0 2 3.5 3 7 3s7-1 7-3V5c0-2-3.5-3-7-3zm0 2c3.5 0 5 .8 5 1s-1.5 1-5 1-5-.8-5-1 1.5-1 5-1zm5 11c0 .2-1.5 1-5 1s-5-.8-5-1v-2.5c1.2.8 3 1 5 1s3.8-.2 5-1V15zm0-5c0 .2-1.5 1-5 1s-5-.8-5-1V7.5c1.2.8 3 1 5 1s3.8-.2 5-1V10z"/>
+                                </svg>
+                                Referenced from @chunk.DataSourceName
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<ChatDto> _chats = new();
     private List<ChatDto> _filteredChats = new();
@@ -812,6 +1013,21 @@
     private const string ReactionTypeThumbsUp = "thumbs_up";
     private const string ReactionTypeThumbsDown = "thumbs_down";
 
+    // Source preview state
+    private bool _enableSourcePreview = true;
+    private bool _enableDocumentPreview = true;
+    private bool _enableDocumentDownload = true;
+    private int _sourcePreviewMinRelevance = 0;
+    private int _sourcePreviewMaxSources = 5;
+    private bool _showSourcePreviewDialog;
+    private IEnumerable<SourceChunkDto>? _previewSourceChunks;
+
+    // Data source selection state
+    private List<DataSourceSelectItem> _availableDataSources = new();
+    private HashSet<Guid> _selectedDataSourceIds = new();
+    private bool _showDataSourceDropdown = false;
+    private record DataSourceSelectItem(Guid Id, string Name, string Type, int DocumentCount);
+
     // .NET reference for JS interop
     private DotNetObjectReference<Home>? _dotNetRef;
 
@@ -831,6 +1047,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadConfiguration();
+        await LoadAccessibleDataSources();
         await LoadFolders();
         await LoadChats();
     }
@@ -854,10 +1071,67 @@
     private async Task LoadConfiguration()
     {
         var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
-        if (config != null && !string.IsNullOrWhiteSpace(config.AiAssistantName))
+        if (config != null)
         {
-            _aiAssistantName = config.AiAssistantName;
+            if (!string.IsNullOrWhiteSpace(config.AiAssistantName))
+            {
+                _aiAssistantName = config.AiAssistantName;
+            }
+            _enableSourcePreview = config.EnableSourcePreview;
+            _enableDocumentPreview = config.EnableDocumentPreview;
+            _enableDocumentDownload = config.EnableDocumentDownload;
+            _sourcePreviewMinRelevance = config.SourcePreviewMinRelevance;
+            _sourcePreviewMaxSources = config.SourcePreviewMaxSources;
         }
+    }
+
+    private async Task LoadAccessibleDataSources()
+    {
+        var accessibleIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
+
+        // Query data sources with document counts - use anonymous type first, then project
+        var dataSources = await DbContext.DataSources
+            .AsNoTracking()
+            .Where(d => accessibleIds.Contains(d.Id) && d.IsActive)
+            .Select(d => new {
+                d.Id,
+                d.Name,
+                d.Type,
+                DocumentCount = d.Documents.Count
+            })
+            .OrderBy(d => d.Name)
+            .ToListAsync();
+
+        // Project to our record type after materialization (for ToString())
+        _availableDataSources = dataSources
+            .Select(d => new DataSourceSelectItem(d.Id, d.Name, d.Type.ToString(), d.DocumentCount))
+            .ToList();
+
+        // Default: all sources selected
+        _selectedDataSourceIds = _availableDataSources.Select(d => d.Id).ToHashSet();
+    }
+
+    private void ToggleDataSourceDropdown()
+    {
+        _showDataSourceDropdown = !_showDataSourceDropdown;
+    }
+
+    private void ToggleDataSource(Guid id)
+    {
+        if (_selectedDataSourceIds.Contains(id))
+            _selectedDataSourceIds.Remove(id);
+        else
+            _selectedDataSourceIds.Add(id);
+    }
+
+    private void SelectAllDataSources()
+    {
+        _selectedDataSourceIds = _availableDataSources.Select(d => d.Id).ToHashSet();
+    }
+
+    private void ClearDataSourceSelection()
+    {
+        _selectedDataSourceIds.Clear();
     }
 
     private async Task LoadChats()
@@ -957,6 +1231,9 @@
         if (_selectedChat == null || (string.IsNullOrWhiteSpace(_userInput) && !_pendingAttachments.Any()))
             return;
 
+        // Close data source dropdown if open
+        _showDataSourceDropdown = false;
+
         var userMessage = _userInput;
         var attachmentsToSend = _pendingAttachments.ToList();
         _userInput = "";
@@ -1006,27 +1283,97 @@
             // Get user's accessible data sources and perform RAG
             string? systemPrompt = null;
             var accessibleDataSourceIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
+            var sourceChunks = new List<SourceChunkDto>();
+
+            // Use selected data sources, filtered by user's access permissions
+            var effectiveDataSourceIds = _selectedDataSourceIds.Any()
+                ? _selectedDataSourceIds.Intersect(accessibleDataSourceIds).ToList()
+                : accessibleDataSourceIds.ToList();
 
             // Load user memories for context
             var userMemories = await GetUserMemoriesAsync();
 
-            if (accessibleDataSourceIds.Any())
+            if (effectiveDataSourceIds.Any())
             {
                 try
                 {
                     // Generate embedding for user's question
                     var queryEmbedding = await EmbeddingService.GenerateEmbeddingAsync(userMessage, _streamingCts.Token);
 
-                    // Search for relevant document chunks
+                    // Search for relevant document chunks using selected data sources
                     var searchResults = await VectorStore.SearchAsync(
                         queryEmbedding,
                         topK: 5,
-                        accessibleDataSourceIds,
+                        effectiveDataSourceIds,
                         _streamingCts.Token);
 
                     if (searchResults.Any())
                     {
                         var ragContext = string.Join("\n\n---\n\n", searchResults.Select(r => r.Content));
+
+                        // Get document and data source details for source preview
+                        var documentIds = searchResults.Select(r => r.DocumentId).Distinct().ToList();
+                        var documents = await DbContext.Documents
+                            .Where(d => documentIds.Contains(d.Id))
+                            .Include(d => d.DataSource)
+                            .Select(d => new {
+                                d.Id,
+                                d.FileName,
+                                d.MimeType,
+                                d.DataSourceId,
+                                DataSourceName = d.DataSource.Name,
+                                DataSourceType = d.DataSource.Type
+                            })
+                            .ToDictionaryAsync(d => d.Id, _streamingCts.Token);
+
+                        // Get admin settings for document access features
+                        var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync(_streamingCts.Token);
+                        var enableDocumentPreview = config?.EnableDocumentPreview ?? true;
+                        var enableDocumentDownload = config?.EnableDocumentDownload ?? true;
+
+                        // Generate message ID for token generation
+                        var tempMessageId = Guid.NewGuid();
+                        var userId = CurrentUser.UserId!.Value;
+
+                        sourceChunks = searchResults.Select(r =>
+                        {
+                            var doc = documents.GetValueOrDefault(r.DocumentId);
+                            var isFileSystem = doc?.DataSourceType == DataSourceType.FileSystem;
+
+                            // Generate secure tokens only for file-based sources
+                            string? viewToken = null;
+                            string? downloadToken = null;
+
+                            if (isFileSystem)
+                            {
+                                if (enableDocumentPreview)
+                                    viewToken = TokenService.GenerateToken(r.DocumentId, userId, tempMessageId, isDownload: false);
+                                if (enableDocumentDownload)
+                                    downloadToken = TokenService.GenerateToken(r.DocumentId, userId, tempMessageId, isDownload: true);
+                            }
+
+                            return new SourceChunkDto(
+                                ChunkId: r.DocumentChunkId,
+                                DocumentId: r.DocumentId,
+                                DataSourceId: r.DataSourceId,
+                                DocumentName: doc?.FileName ?? "Unknown Document",
+                                DataSourceName: doc?.DataSourceName ?? "Unknown Source",
+                                Content: r.Content,
+                                Score: r.Score,
+                                ChunkIndex: null,
+                                DataSourceType: doc?.DataSourceType.ToString(),
+                                MimeType: doc?.MimeType,
+                                ViewToken: viewToken,
+                                DownloadToken: downloadToken);
+                        }).ToList();
+
+                        // Apply source filtering based on admin settings
+                        var minRelevanceDecimal = _sourcePreviewMinRelevance / 100f;
+                        sourceChunks = sourceChunks
+                            .Where(c => c.Score >= minRelevanceDecimal)
+                            .OrderByDescending(c => c.Score)
+                            .Take(_sourcePreviewMaxSources)
+                            .ToList();
 
                         systemPrompt = "You are a helpful AI assistant with access to organizational documents.\n" +
                             "Use the provided context to answer questions accurately.\n" +
@@ -1066,6 +1413,7 @@
                     ChatId = _selectedChat.Id,
                     Role = MessageRole.Assistant,
                     Content = _streamingContent,
+                    SourceChunksJson = sourceChunks.Any() ? JsonSerializer.Serialize(sourceChunks) : null,
                     CreatedAt = DateTimeService.UtcNow
                 };
                 DbContext.ChatMessages.Add(assistantMsg);
@@ -1080,12 +1428,15 @@
 
                 await DbContext.SaveChangesAsync(_streamingCts.Token);
 
-                // Add to local messages list
+                // Add to local messages list with source chunks
                 _messages.Add(new ChatMessageDto(
                     assistantMsg.Id,
                     MessageRole.Assistant,
                     _streamingContent,
-                    assistantMsg.CreatedAt));
+                    assistantMsg.CreatedAt,
+                    null,
+                    null,
+                    sourceChunks.Any() ? sourceChunks : null));
             }
 
             // Reload chat list to update titles
@@ -1353,15 +1704,20 @@
             var accessibleDataSourceIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
             var lastUserMessage = _messages.LastOrDefault(m => m.Role == MessageRole.User);
 
+            // Use selected data sources, filtered by user's access permissions
+            var effectiveDataSourceIds = _selectedDataSourceIds.Any()
+                ? _selectedDataSourceIds.Intersect(accessibleDataSourceIds).ToList()
+                : accessibleDataSourceIds.ToList();
+
             // Load user memories for context
             var userMemories = await GetUserMemoriesAsync();
 
-            if (accessibleDataSourceIds.Any() && lastUserMessage != null)
+            if (effectiveDataSourceIds.Any() && lastUserMessage != null)
             {
                 try
                 {
                     var queryEmbedding = await EmbeddingService.GenerateEmbeddingAsync(lastUserMessage.Content, _streamingCts.Token);
-                    var searchResults = await VectorStore.SearchAsync(queryEmbedding, topK: 5, accessibleDataSourceIds, _streamingCts.Token);
+                    var searchResults = await VectorStore.SearchAsync(queryEmbedding, topK: 5, effectiveDataSourceIds, _streamingCts.Token);
 
                     if (searchResults.Any())
                     {
@@ -2392,6 +2748,34 @@
         _feedbackCategory = "";
         _feedbackText = "";
         StateHasChanged();
+    }
+
+    private void ShowSourcePreview(IEnumerable<SourceChunkDto> sourceChunks)
+    {
+        _previewSourceChunks = sourceChunks;
+        _showSourcePreviewDialog = true;
+        StateHasChanged();
+    }
+
+    private void CloseSourcePreview()
+    {
+        _showSourcePreviewDialog = false;
+        _previewSourceChunks = null;
+        StateHasChanged();
+    }
+
+    private MarkupString GetFileTypeIcon(string mimeType)
+    {
+        // Return appropriate SVG icon based on MIME type
+        return mimeType?.ToLowerInvariant() switch
+        {
+            "application/pdf" => new MarkupString("<svg viewBox='0 0 20 20' fill='#e74c3c'><path d='M4 2h8l4 4v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2zm7 0v5h5'/></svg>"),
+            "application/msword" or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" =>
+                new MarkupString("<svg viewBox='0 0 20 20' fill='#2980b9'><path d='M4 2h8l4 4v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2zm7 0v5h5'/></svg>"),
+            "text/plain" or "text/csv" or "text/markdown" =>
+                new MarkupString("<svg viewBox='0 0 20 20' fill='#666'><path d='M4 2h8l4 4v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2zm7 0v5h5M5 9h10M5 12h10M5 15h6'/></svg>"),
+            _ => new MarkupString("<svg viewBox='0 0 20 20' fill='#888'><path d='M4 2h8l4 4v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2zm7 0v5h5'/></svg>")
+        };
     }
 
     private string GetCategoryLabel(string category) => category switch

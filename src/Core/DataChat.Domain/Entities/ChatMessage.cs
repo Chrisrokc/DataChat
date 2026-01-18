@@ -12,6 +12,7 @@ public class ChatMessage
     public int? InputTokens { get; set; }  // For cost tracking
     public int? OutputTokens { get; set; } // For cost tracking
     public string? DataSourcesUsed { get; set; } // JSON array of data source IDs
+    public string? SourceChunksJson { get; set; } // JSON array of RAG source chunks used (for source preview feature)
     public string? AttachmentsJson { get; set; } // JSON array of file/image attachments
     public DateTime CreatedAt { get; set; }
 

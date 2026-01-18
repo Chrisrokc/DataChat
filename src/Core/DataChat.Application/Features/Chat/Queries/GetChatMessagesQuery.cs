@@ -44,7 +44,8 @@ public class GetChatMessagesQueryHandler : IRequestHandler<GetChatMessagesQuery,
                 m.Content,
                 m.CreatedAt,
                 null,
-                ParseAttachments(m.AttachmentsJson))));
+                ParseAttachments(m.AttachmentsJson),
+                ParseSourceChunks(m.SourceChunksJson))));
     }
 
     private static IEnumerable<MessageAttachmentDto>? ParseAttachments(string? attachmentsJson)
@@ -55,6 +56,21 @@ public class GetChatMessagesQueryHandler : IRequestHandler<GetChatMessagesQuery,
         try
         {
             return JsonSerializer.Deserialize<List<MessageAttachmentDto>>(attachmentsJson);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IEnumerable<SourceChunkDto>? ParseSourceChunks(string? sourceChunksJson)
+    {
+        if (string.IsNullOrEmpty(sourceChunksJson))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<SourceChunkDto>>(sourceChunksJson);
         }
         catch
         {
