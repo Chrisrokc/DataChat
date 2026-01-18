@@ -10,7 +10,9 @@ public interface IApplicationDbContext
     DbSet<UserRole> UserRoles { get; }
     DbSet<AdGroupRoleMapping> AdGroupRoleMappings { get; }
     DbSet<Chat> Chats { get; }
+    DbSet<ChatFolder> ChatFolders { get; }
     DbSet<ChatMessage> ChatMessages { get; }
+    DbSet<MessageReaction> MessageReactions { get; }
     DbSet<DataSource> DataSources { get; }
     DbSet<FileSystemDataSource> FileSystemDataSources { get; }
     DbSet<SqlViewDataSource> SqlViewDataSources { get; }
@@ -23,6 +25,7 @@ public interface IApplicationDbContext
     DbSet<SystemConfiguration> SystemConfiguration { get; }
     DbSet<SystemPrompt> SystemPrompts { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<UserMemory> UserMemories { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

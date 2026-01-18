@@ -15,7 +15,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<AdGroupRoleMapping> AdGroupRoleMappings => Set<AdGroupRoleMapping>();
     public DbSet<Chat> Chats => Set<Chat>();
+    public DbSet<ChatFolder> ChatFolders => Set<ChatFolder>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<DataSource> DataSources => Set<DataSource>();
     public DbSet<FileSystemDataSource> FileSystemDataSources => Set<FileSystemDataSource>();
     public DbSet<SqlViewDataSource> SqlViewDataSources => Set<SqlViewDataSource>();
@@ -28,6 +30,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<SystemConfiguration> SystemConfiguration => Set<SystemConfiguration>();
     public DbSet<SystemPrompt> SystemPrompts => Set<SystemPrompt>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<UserMemory> UserMemories => Set<UserMemory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

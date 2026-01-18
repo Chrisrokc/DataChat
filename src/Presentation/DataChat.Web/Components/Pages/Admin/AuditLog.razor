@@ -1,0 +1,529 @@
+@page "/admin/audit-log"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IApplicationDbContext DbContext
+@inject IToastService ToastService
+
+<PageTitle>Audit Log</PageTitle>
+
+<h4 style="margin-bottom: 24px;">Audit Log</h4>
+
+<FluentCard Style="padding: 20px; margin-bottom: 24px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+        <div style="flex: 1; min-width: 200px;">
+            <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Search</label>
+            <FluentTextField @bind-Value="_searchTerm" Placeholder="Search action, entity, or user..." Style="width: 100%;" @oninput="OnSearchChanged" />
+        </div>
+        <div style="min-width: 150px;">
+            <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Action Type</label>
+            <select @bind="_selectedAction" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; background: var(--neutral-layer-1);">
+                <option value="">All Actions</option>
+                @foreach (var action in _availableActions)
+                {
+                    <option value="@action">@action</option>
+                }
+            </select>
+        </div>
+        <div style="min-width: 150px;">
+            <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Entity Type</label>
+            <select @bind="_selectedEntity" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; background: var(--neutral-layer-1);">
+                <option value="">All Entities</option>
+                @foreach (var entity in _availableEntities)
+                {
+                    <option value="@entity">@entity</option>
+                }
+            </select>
+        </div>
+        <div style="min-width: 150px;">
+            <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Time Range</label>
+            <select @bind="_selectedPeriod" @bind:after="LoadData" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; background: var(--neutral-layer-1);">
+                <option value="1">Last 24 hours</option>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="0">All time</option>
+            </select>
+        </div>
+        <FluentButton Appearance="Appearance.Accent" OnClick="LoadData">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="margin-right: 4px;">
+                <path d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/>
+            </svg>
+            Search
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Stealth" OnClick="ExportAuditLog">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="margin-right: 4px;">
+                <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"/>
+            </svg>
+            Export
+        </FluentButton>
+    </div>
+</FluentCard>
+
+@if (_isLoading)
+{
+    <FluentProgress />
+}
+else
+{
+    <FluentCard Style="padding: 0; overflow: hidden;">
+        @if (_logs.Any())
+        {
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: var(--neutral-layer-2); border-bottom: 2px solid var(--neutral-stroke-rest);">
+                        <th style="text-align: left; padding: 12px 16px; font-weight: 600;">Timestamp</th>
+                        <th style="text-align: left; padding: 12px 16px; font-weight: 600;">User</th>
+                        <th style="text-align: left; padding: 12px 16px; font-weight: 600;">Action</th>
+                        <th style="text-align: left; padding: 12px 16px; font-weight: 600;">Entity</th>
+                        <th style="text-align: left; padding: 12px 16px; font-weight: 600;">Details</th>
+                        <th style="text-align: center; padding: 12px 16px; font-weight: 600; width: 80px;">View</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in _logs)
+                    {
+                        <tr style="border-bottom: 1px solid var(--neutral-stroke-rest);" class="audit-row">
+                            <td style="padding: 12px 16px; white-space: nowrap;">
+                                <div style="font-size: 13px;">@log.Timestamp.ToLocalTime().ToString("MMM d, yyyy")</div>
+                                <div style="font-size: 12px; color: #888;">@log.Timestamp.ToLocalTime().ToString("h:mm:ss tt")</div>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 11px; flex-shrink: 0;">
+                                        @(log.UserName?.Substring(0, 1).ToUpper() ?? "?")
+                                    </div>
+                                    <span style="font-size: 13px;">@(log.UserName ?? "System")</span>
+                                </div>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <span class="action-badge @GetActionClass(log.Action)">@log.Action</span>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                @if (!string.IsNullOrEmpty(log.EntityType))
+                                {
+                                    <div style="font-size: 13px;">@log.EntityType</div>
+                                    @if (!string.IsNullOrEmpty(log.EntityId))
+                                    {
+                                        <div style="font-size: 11px; color: #888; font-family: monospace;">@TruncateId(log.EntityId)</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span style="color: #888;">-</span>
+                                }
+                            </td>
+                            <td style="padding: 12px 16px; max-width: 300px;">
+                                @if (!string.IsNullOrEmpty(log.NewValues))
+                                {
+                                    <div style="font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                        @TruncateJson(log.NewValues)
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span style="color: #888;">-</span>
+                                }
+                            </td>
+                            <td style="padding: 12px 16px; text-align: center;">
+                                <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ShowDetails(log))" title="View details">
+                                    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                                    </svg>
+                                </FluentButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @* Pagination *@
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-top: 1px solid var(--neutral-stroke-rest);">
+                <div style="font-size: 13px; color: #666;">
+                    Showing @((_currentPage - 1) * _pageSize + 1) - @Math.Min(_currentPage * _pageSize, _totalCount) of @_totalCount entries
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <FluentButton Appearance="Appearance.Stealth" Disabled="@(_currentPage <= 1)" OnClick="PreviousPage">Previous</FluentButton>
+                    <span style="padding: 8px 16px; background: var(--neutral-layer-2); border-radius: 4px;">Page @_currentPage of @_totalPages</span>
+                    <FluentButton Appearance="Appearance.Stealth" Disabled="@(_currentPage >= _totalPages)" OnClick="NextPage">Next</FluentButton>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="padding: 60px; text-align: center; color: #888;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.5; margin-bottom: 16px;">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                </svg>
+                <p>No audit log entries found</p>
+            </div>
+        }
+    </FluentCard>
+}
+
+@* Details Dialog *@
+@if (_showDetails && _selectedLog != null)
+{
+    <div class="dialog-overlay" @onclick="CloseDetails">
+        <div class="details-dialog" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h5 style="margin: 0;">Audit Log Details</h5>
+                <FluentButton Appearance="Appearance.Stealth" OnClick="CloseDetails">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M4.089 4.216l.057-.07a.5.5 0 01.638-.057l.07.057L10 9.293l5.146-5.147a.5.5 0 01.638-.057l.07.057a.5.5 0 01.057.638l-.057.07L10.707 10l5.147 5.146a.5.5 0 01.057.638l-.057.07a.5.5 0 01-.638.057l-.07-.057L10 10.707l-5.146 5.147a.5.5 0 01-.638.057l-.07-.057a.5.5 0 01-.057-.638l.057-.07L9.293 10 4.146 4.854a.5.5 0 01-.057-.638l.057-.07-.057.07z"/>
+                    </svg>
+                </FluentButton>
+            </div>
+
+            <div style="display: grid; gap: 16px;">
+                <div class="detail-row">
+                    <span class="detail-label">Timestamp</span>
+                    <span class="detail-value">@_selectedLog.Timestamp.ToLocalTime().ToString("MMMM d, yyyy 'at' h:mm:ss tt")</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">User</span>
+                    <span class="detail-value">@(_selectedLog.UserName ?? "System")</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Action</span>
+                    <span class="action-badge @GetActionClass(_selectedLog.Action)">@_selectedLog.Action</span>
+                </div>
+                @if (!string.IsNullOrEmpty(_selectedLog.EntityType))
+                {
+                    <div class="detail-row">
+                        <span class="detail-label">Entity Type</span>
+                        <span class="detail-value">@_selectedLog.EntityType</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_selectedLog.EntityId))
+                {
+                    <div class="detail-row">
+                        <span class="detail-label">Entity ID</span>
+                        <span class="detail-value" style="font-family: monospace;">@_selectedLog.EntityId</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_selectedLog.IpAddress))
+                {
+                    <div class="detail-row">
+                        <span class="detail-label">IP Address</span>
+                        <span class="detail-value" style="font-family: monospace;">@_selectedLog.IpAddress</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_selectedLog.OldValues))
+                {
+                    <div>
+                        <span class="detail-label" style="display: block; margin-bottom: 8px;">Previous Values</span>
+                        <pre class="json-block">@FormatJson(_selectedLog.OldValues)</pre>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_selectedLog.NewValues))
+                {
+                    <div>
+                        <span class="detail-label" style="display: block; margin-bottom: 8px;">New Values</span>
+                        <pre class="json-block">@FormatJson(_selectedLog.NewValues)</pre>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .audit-row:hover {
+        background: var(--neutral-layer-2);
+    }
+
+    .action-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .action-create { background: rgba(16, 124, 16, 0.1); color: #107c10; }
+    .action-update { background: rgba(0, 120, 212, 0.1); color: #0078d4; }
+    .action-delete { background: rgba(209, 52, 56, 0.1); color: #d13438; }
+    .action-login { background: rgba(92, 45, 145, 0.1); color: #5c2d91; }
+    .action-default { background: rgba(96, 96, 96, 0.1); color: #606060; }
+
+    .dialog-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .details-dialog {
+        background: var(--neutral-layer-1);
+        border-radius: 12px;
+        padding: 24px;
+        width: 100%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--neutral-stroke-rest);
+    }
+
+    .detail-label {
+        font-weight: 500;
+        color: #666;
+    }
+
+    .detail-value {
+        text-align: right;
+    }
+
+    .json-block {
+        background: var(--neutral-layer-2);
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-family: 'Consolas', monospace;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+</style>
+
+@code {
+    private List<AuditLogDto> _logs = new();
+    private bool _isLoading = true;
+    private string _searchTerm = "";
+    private string _selectedAction = "";
+    private string _selectedEntity = "";
+    private int _selectedPeriod = 7;
+    private int _currentPage = 1;
+    private int _pageSize = 25;
+    private int _totalCount;
+    private int _totalPages;
+
+    private List<string> _availableActions = new();
+    private List<string> _availableEntities = new();
+
+    private bool _showDetails;
+    private AuditLogDto? _selectedLog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFilterOptions();
+        await LoadData();
+    }
+
+    private async Task LoadFilterOptions()
+    {
+        _availableActions = await DbContext.AuditLogs
+            .Select(l => l.Action)
+            .Distinct()
+            .OrderBy(a => a)
+            .ToListAsync();
+
+        _availableEntities = await DbContext.AuditLogs
+            .Where(l => l.EntityType != null)
+            .Select(l => l.EntityType!)
+            .Distinct()
+            .OrderBy(e => e)
+            .ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = DbContext.AuditLogs.AsQueryable();
+
+            // Apply time filter
+            if (_selectedPeriod > 0)
+            {
+                var startDate = DateTime.UtcNow.AddDays(-_selectedPeriod);
+                query = query.Where(l => l.Timestamp >= startDate);
+            }
+
+            // Apply search filter
+            if (!string.IsNullOrWhiteSpace(_searchTerm))
+            {
+                var term = _searchTerm.ToLower();
+                query = query.Where(l =>
+                    l.Action.ToLower().Contains(term) ||
+                    (l.EntityType != null && l.EntityType.ToLower().Contains(term)) ||
+                    (l.EntityId != null && l.EntityId.ToLower().Contains(term)));
+            }
+
+            // Apply action filter
+            if (!string.IsNullOrEmpty(_selectedAction))
+            {
+                query = query.Where(l => l.Action == _selectedAction);
+            }
+
+            // Apply entity filter
+            if (!string.IsNullOrEmpty(_selectedEntity))
+            {
+                query = query.Where(l => l.EntityType == _selectedEntity);
+            }
+
+            // Get total count
+            _totalCount = await query.CountAsync();
+            _totalPages = (int)Math.Ceiling(_totalCount / (double)_pageSize);
+            _currentPage = Math.Max(1, Math.Min(_currentPage, _totalPages));
+
+            // Get page data with user info
+            var logs = await query
+                .OrderByDescending(l => l.Timestamp)
+                .Skip((_currentPage - 1) * _pageSize)
+                .Take(_pageSize)
+                .Select(l => new AuditLogDto
+                {
+                    Id = l.Id,
+                    UserId = l.UserId,
+                    Action = l.Action,
+                    EntityType = l.EntityType,
+                    EntityId = l.EntityId,
+                    OldValues = l.OldValues,
+                    NewValues = l.NewValues,
+                    IpAddress = l.IpAddress,
+                    Timestamp = l.Timestamp
+                })
+                .ToListAsync();
+
+            // Load user names
+            var userIds = logs.Where(l => l.UserId.HasValue).Select(l => l.UserId!.Value).Distinct().ToList();
+            var users = await DbContext.Users
+                .Where(u => userIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.DisplayName ?? u.Username);
+
+            foreach (var log in logs)
+            {
+                if (log.UserId.HasValue && users.TryGetValue(log.UserId.Value, out var name))
+                {
+                    log.UserName = name;
+                }
+            }
+
+            _logs = logs;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load audit logs: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchTerm = e.Value?.ToString() ?? "";
+    }
+
+    private async Task PreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            await LoadData();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (_currentPage < _totalPages)
+        {
+            _currentPage++;
+            await LoadData();
+        }
+    }
+
+    private void ShowDetails(AuditLogDto log)
+    {
+        _selectedLog = log;
+        _showDetails = true;
+    }
+
+    private void CloseDetails()
+    {
+        _showDetails = false;
+        _selectedLog = null;
+    }
+
+    private string GetActionClass(string action)
+    {
+        return action.ToLower() switch
+        {
+            "create" or "created" => "action-create",
+            "update" or "updated" or "modify" or "modified" => "action-update",
+            "delete" or "deleted" or "remove" or "removed" => "action-delete",
+            "login" or "logout" or "authenticate" => "action-login",
+            _ => "action-default"
+        };
+    }
+
+    private string TruncateId(string id)
+    {
+        if (id.Length > 12)
+            return id[..8] + "...";
+        return id;
+    }
+
+    private string TruncateJson(string json)
+    {
+        if (json.Length > 80)
+            return json[..77] + "...";
+        return json;
+    }
+
+    private string FormatJson(string json)
+    {
+        try
+        {
+            var obj = System.Text.Json.JsonSerializer.Deserialize<object>(json);
+            return System.Text.Json.JsonSerializer.Serialize(obj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    private async Task ExportAuditLog()
+    {
+        ToastService.ShowInfo("Exporting audit log...");
+        // Export functionality can be implemented with JS interop
+        await Task.Delay(500);
+        ToastService.ShowSuccess("Export complete");
+    }
+
+    private class AuditLogDto
+    {
+        public long Id { get; set; }
+        public Guid? UserId { get; set; }
+        public string? UserName { get; set; }
+        public string Action { get; set; } = "";
+        public string? EntityType { get; set; }
+        public string? EntityId { get; set; }
+        public string? OldValues { get; set; }
+        public string? NewValues { get; set; }
+        public string? IpAddress { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+}

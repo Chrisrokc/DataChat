@@ -32,7 +32,9 @@ public class GetUserChatsQueryHandler : IRequestHandler<GetUserChatsQuery, IEnum
                 c.Title,
                 c.CreatedAt,
                 c.UpdatedAt,
-                c.Messages.Count))
+                c.Messages.Count,
+                c.FolderId,
+                c.IsPinned))
             .ToListAsync(cancellationToken);
 
         return chats;

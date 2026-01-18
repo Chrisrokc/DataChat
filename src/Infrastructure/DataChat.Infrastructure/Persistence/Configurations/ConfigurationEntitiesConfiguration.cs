@@ -74,6 +74,31 @@ public class SystemConfigurationConfiguration : IEntityTypeConfiguration<SystemC
             .HasPrecision(3, 2)
             .HasDefaultValue(0.7m);
 
+        // Announcement settings
+        builder.Property(s => s.AnnouncementMessage)
+            .HasMaxLength(1000);
+
+        builder.Property(s => s.AnnouncementType)
+            .HasMaxLength(20)
+            .HasDefaultValue("info");
+
+        // Cost tracking settings
+        builder.Property(s => s.CostPerInputToken)
+            .HasPrecision(18, 10)
+            .HasDefaultValue(0.00001m);
+
+        builder.Property(s => s.CostPerOutputToken)
+            .HasPrecision(18, 10)
+            .HasDefaultValue(0.00003m);
+
+        builder.Property(s => s.MonthlyCostBudget)
+            .HasPrecision(18, 2)
+            .HasDefaultValue(0m);
+
+        builder.Property(s => s.CostAlertThreshold)
+            .HasPrecision(5, 2)
+            .HasDefaultValue(80m);
+
         builder.Property(s => s.UpdatedBy)
             .HasMaxLength(256);
 

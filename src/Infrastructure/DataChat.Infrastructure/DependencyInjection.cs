@@ -21,7 +21,7 @@ public static class DependencyInjection
     {
         // Database
         var connectionString = configuration.GetConnectionString("DefaultConnection");
-        services.AddDbContext<ApplicationDbContext>(options =>
+        services.AddDbContextFactory<ApplicationDbContext>(options =>
             options.UseSqlServer(connectionString, sqlOptions =>
             {
                 sqlOptions.EnableRetryOnFailure(
@@ -30,6 +30,10 @@ public static class DependencyInjection
                     errorNumbersToAdd: null);
                 sqlOptions.CommandTimeout(60);
             }));
+
+        // Also register the DbContext itself for backward compatibility
+        services.AddScoped<ApplicationDbContext>(provider =>
+            provider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>().CreateDbContext());
 
         services.AddScoped<IApplicationDbContext>(provider =>
             provider.GetRequiredService<ApplicationDbContext>());

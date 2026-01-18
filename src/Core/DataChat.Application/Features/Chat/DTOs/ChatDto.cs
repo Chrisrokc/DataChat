@@ -5,4 +5,6 @@ public record ChatDto(
     string Title,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    int MessageCount);
+    int MessageCount,
+    Guid? FolderId = null,
+    bool IsPinned = false);

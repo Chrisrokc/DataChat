@@ -1,0 +1,326 @@
+@page "/admin/announcements"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IApplicationDbContext DbContext
+@inject ICurrentUserService CurrentUser
+@inject IToastService ToastService
+@inject IDateTimeService DateTimeService
+
+<PageTitle>Announcement Banner</PageTitle>
+
+<h4 style="margin-bottom: 24px;">Announcement Banner</h4>
+
+@if (_isLoading)
+{
+    <FluentProgress />
+}
+else
+{
+    @* Preview *@
+    <FluentCard Style="padding: 20px; margin-bottom: 24px;">
+        <h6 style="margin-bottom: 16px;">Preview</h6>
+        @if (_config.AnnouncementEnabled && !string.IsNullOrWhiteSpace(_config.AnnouncementMessage))
+        {
+            <div class="announcement-preview @_config.AnnouncementType">
+                <div class="announcement-icon">
+                    @if (_config.AnnouncementType == "info")
+                    {
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                        </svg>
+                    }
+                    else if (_config.AnnouncementType == "warning")
+                    {
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                    }
+                    else if (_config.AnnouncementType == "error")
+                    {
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                    }
+                </div>
+                <div class="announcement-message">@_config.AnnouncementMessage</div>
+                @if (_config.AnnouncementDismissible)
+                {
+                    <button class="announcement-dismiss" title="Dismiss">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M4.089 4.216l.057-.07a.5.5 0 01.638-.057l.07.057L10 9.293l5.146-5.147a.5.5 0 01.638-.057l.07.057a.5.5 0 01.057.638l-.057.07L10.707 10l5.147 5.146a.5.5 0 01.057.638l-.057.07a.5.5 0 01-.638.057l-.07-.057L10 10.707l-5.146 5.147a.5.5 0 01-.638.057l-.07-.057a.5.5 0 01-.057-.638l.057-.07L9.293 10 4.146 4.854a.5.5 0 01-.057-.638l.057-.07-.057.07z"/>
+                        </svg>
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="padding: 20px; text-align: center; color: #888; background: var(--neutral-layer-2); border-radius: 8px;">
+                No announcement banner is currently active
+            </div>
+        }
+    </FluentCard>
+
+    @* Settings *@
+    <FluentCard Style="padding: 20px; margin-bottom: 24px;">
+        <h6 style="margin-bottom: 20px;">Banner Configuration</h6>
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+            <FluentSwitch @bind-Value="_config.AnnouncementEnabled" Label="Enable Announcement Banner" />
+        </div>
+
+        <FluentGrid Spacing="4">
+            <FluentGridItem xs="12">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Message</label>
+                <FluentTextArea @bind-Value="_config.AnnouncementMessage" Rows="3" Placeholder="Enter your announcement message..." Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="6" md="4">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Banner Type</label>
+                <select @bind="_config.AnnouncementType" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; background: var(--neutral-layer-1);">
+                    <option value="info">Info (Blue)</option>
+                    <option value="success">Success (Green)</option>
+                    <option value="warning">Warning (Yellow)</option>
+                    <option value="error">Error (Red)</option>
+                </select>
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="6" md="4">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Start Date (Optional)</label>
+                <FluentDatePicker @bind-Value="_startDate" Style="width: 100%;" />
+            </FluentGridItem>
+
+            <FluentGridItem xs="12" sm="6" md="4">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">End Date (Optional)</label>
+                <FluentDatePicker @bind-Value="_endDate" Style="width: 100%;" />
+            </FluentGridItem>
+        </FluentGrid>
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 20px;">
+            <FluentCheckbox @bind-Value="_config.AnnouncementDismissible" Label="Allow users to dismiss the banner" />
+        </div>
+
+        <div style="margin-top: 20px; padding: 12px; background: var(--neutral-layer-2); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 500; margin-bottom: 8px;">Scheduling Info</div>
+            <div style="font-size: 13px; color: #666;">
+                @if (_startDate.HasValue || _endDate.HasValue)
+                {
+                    <p style="margin: 0;">
+                        @if (_startDate.HasValue && _endDate.HasValue)
+                        {
+                            <span>Banner will be shown from <strong>@_startDate.Value.ToString("MMM d, yyyy")</strong> to <strong>@_endDate.Value.ToString("MMM d, yyyy")</strong></span>
+                        }
+                        else if (_startDate.HasValue)
+                        {
+                            <span>Banner will be shown starting <strong>@_startDate.Value.ToString("MMM d, yyyy")</strong></span>
+                        }
+                        else if (_endDate.HasValue)
+                        {
+                            <span>Banner will be shown until <strong>@_endDate.Value.ToString("MMM d, yyyy")</strong></span>
+                        }
+                    </p>
+                }
+                else
+                {
+                    <p style="margin: 0;">No schedule set - banner will be shown immediately when enabled.</p>
+                }
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 24px;">
+            <FluentButton Appearance="Appearance.Accent" OnClick="SaveSettings" Disabled="@_isSaving">
+                @if (_isSaving)
+                {
+                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                }
+                Save Changes
+            </FluentButton>
+            @if (_config.AnnouncementEnabled)
+            {
+                <FluentButton Appearance="Appearance.Stealth" OnClick="DisableBanner">
+                    Disable Banner
+                </FluentButton>
+            }
+        </div>
+    </FluentCard>
+
+    @* Quick Templates *@
+    <FluentCard Style="padding: 20px;">
+        <h6 style="margin-bottom: 16px;">Quick Templates</h6>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ApplyTemplate("maintenance"))">
+                Scheduled Maintenance
+            </FluentButton>
+            <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ApplyTemplate("newfeature"))">
+                New Feature
+            </FluentButton>
+            <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ApplyTemplate("outage"))">
+                Service Outage
+            </FluentButton>
+            <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ApplyTemplate("welcome"))">
+                Welcome Message
+            </FluentButton>
+        </div>
+    </FluentCard>
+}
+
+<style>
+    .announcement-preview {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+
+    .announcement-preview.info {
+        background: rgba(0, 120, 212, 0.1);
+        border: 1px solid rgba(0, 120, 212, 0.3);
+        color: #0078d4;
+    }
+
+    .announcement-preview.success {
+        background: rgba(16, 124, 16, 0.1);
+        border: 1px solid rgba(16, 124, 16, 0.3);
+        color: #107c10;
+    }
+
+    .announcement-preview.warning {
+        background: rgba(255, 185, 0, 0.15);
+        border: 1px solid rgba(255, 185, 0, 0.4);
+        color: #8a6914;
+    }
+
+    .announcement-preview.error {
+        background: rgba(209, 52, 56, 0.1);
+        border: 1px solid rgba(209, 52, 56, 0.3);
+        color: #d13438;
+    }
+
+    .announcement-icon {
+        flex-shrink: 0;
+    }
+
+    .announcement-message {
+        flex: 1;
+    }
+
+    .announcement-dismiss {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        opacity: 0.7;
+        transition: opacity 0.15s;
+    }
+
+    .announcement-dismiss:hover {
+        opacity: 1;
+    }
+</style>
+
+@code {
+    private SystemConfiguration _config = new();
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private bool _isLoading = true;
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _config = await DbContext.SystemConfiguration.FirstOrDefaultAsync() ?? new SystemConfiguration();
+            _startDate = _config.AnnouncementStartDate?.ToLocalTime();
+            _endDate = _config.AnnouncementEndDate?.ToLocalTime();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load settings: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+            if (config != null)
+            {
+                config.AnnouncementEnabled = _config.AnnouncementEnabled;
+                config.AnnouncementMessage = _config.AnnouncementMessage;
+                config.AnnouncementType = _config.AnnouncementType;
+                config.AnnouncementDismissible = _config.AnnouncementDismissible;
+                config.AnnouncementStartDate = _startDate?.ToUniversalTime();
+                config.AnnouncementEndDate = _endDate?.ToUniversalTime();
+                config.UpdatedAt = DateTimeService.UtcNow;
+                config.UpdatedBy = CurrentUser.WindowsIdentity;
+
+                await DbContext.SaveChangesAsync();
+                ToastService.ShowSuccess("Announcement settings saved successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisableBanner()
+    {
+        _config.AnnouncementEnabled = false;
+        await SaveSettings();
+    }
+
+    private void ApplyTemplate(string template)
+    {
+        switch (template)
+        {
+            case "maintenance":
+                _config.AnnouncementMessage = "Scheduled maintenance will be performed on [DATE] from [TIME] to [TIME]. The service may be temporarily unavailable during this period.";
+                _config.AnnouncementType = "warning";
+                break;
+            case "newfeature":
+                _config.AnnouncementMessage = "New feature available! Check out [FEATURE NAME] to enhance your experience.";
+                _config.AnnouncementType = "success";
+                break;
+            case "outage":
+                _config.AnnouncementMessage = "We are currently experiencing service disruptions. Our team is working to resolve the issue. Thank you for your patience.";
+                _config.AnnouncementType = "error";
+                break;
+            case "welcome":
+                _config.AnnouncementMessage = "Welcome to DataChat! Get started by typing your question below.";
+                _config.AnnouncementType = "info";
+                break;
+        }
+        StateHasChanged();
+    }
+}

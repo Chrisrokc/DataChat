@@ -3,7 +3,9 @@
 @using DataChat.Application.Features.Chat.Queries
 @using DataChat.Application.Features.Chat.DTOs
 @using DataChat.Domain.Enums
+@using DataChat.Domain.Entities
 @using System.Text.Json
+@using System.Text.RegularExpressions
 @inject IMediator Mediator
 @inject ICurrentUserService CurrentUser
 @inject IAiChatService AiChatService
@@ -14,6 +16,7 @@
 @inject NavigationManager Navigation
 @inject IToastService ToastService
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 
 <PageTitle>Enterprise Chat</PageTitle>
 
@@ -75,6 +78,43 @@
         .chat-bubble.user .message-action-btn:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.3); color: white; }
         .chat-bubble.user .message-action-btn svg { fill: currentColor; }
 
+        /* Reaction button styles */
+        .reaction-divider { width: 1px; height: 20px; background: rgba(0, 0, 0, 0.1); margin: 0 4px; }
+        body.dark-theme .reaction-divider { background: rgba(255, 255, 255, 0.1); }
+        .reaction-btn { background: transparent; border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; color: #666; transition: all 0.15s ease; }
+        .reaction-btn:hover { background: rgba(0, 0, 0, 0.05); border-color: rgba(0, 0, 0, 0.2); }
+        .reaction-btn.active-positive { background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #16a34a; }
+        .reaction-btn.active-positive:hover { background: rgba(34, 197, 94, 0.15); }
+        .reaction-btn.active-negative { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #dc2626; }
+        .reaction-btn.active-negative:hover { background: rgba(239, 68, 68, 0.15); }
+        body.dark-theme .reaction-btn { border-color: rgba(255, 255, 255, 0.1); color: #999; }
+        body.dark-theme .reaction-btn:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.2); }
+        body.dark-theme .reaction-btn.active-positive { background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4); color: #22c55e; }
+        body.dark-theme .reaction-btn.active-negative { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #f87171; }
+
+        /* Feedback dialog styles */
+        .feedback-dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .feedback-dialog { background: white; border-radius: 12px; padding: 24px; width: 100%; max-width: 450px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
+        body.dark-theme .feedback-dialog { background: #2a2a2a; color: #e8e8e8; }
+        .feedback-dialog h3 { margin: 0 0 16px 0; font-size: 18px; font-weight: 600; }
+        .feedback-category-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+        .feedback-category { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 8px; cursor: pointer; transition: all 0.15s ease; }
+        .feedback-category:hover { background: rgba(0, 0, 0, 0.03); }
+        .feedback-category.selected { background: rgba(0, 120, 212, 0.1); border-color: #0078d4; }
+        body.dark-theme .feedback-category { border-color: rgba(255, 255, 255, 0.1); }
+        body.dark-theme .feedback-category:hover { background: rgba(255, 255, 255, 0.05); }
+        body.dark-theme .feedback-category.selected { background: rgba(0, 120, 212, 0.2); }
+        .feedback-textarea { width: 100%; min-height: 80px; padding: 12px; border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 8px; font-family: inherit; font-size: 14px; resize: vertical; margin-bottom: 16px; }
+        body.dark-theme .feedback-textarea { background: #333; border-color: rgba(255, 255, 255, 0.1); color: #e8e8e8; }
+        .feedback-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .feedback-btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.15s ease; }
+        .feedback-btn-cancel { background: transparent; border: 1px solid rgba(0, 0, 0, 0.1); color: #666; }
+        .feedback-btn-cancel:hover { background: rgba(0, 0, 0, 0.05); }
+        .feedback-btn-submit { background: #0078d4; border: none; color: white; }
+        .feedback-btn-submit:hover { background: #106ebe; }
+        body.dark-theme .feedback-btn-cancel { border-color: rgba(255, 255, 255, 0.1); color: #999; }
+        body.dark-theme .feedback-btn-cancel:hover { background: rgba(255, 255, 255, 0.08); }
+
         /* Search input styles */
         body.dark-theme .search-input { background: rgba(50, 50, 50, 0.9) !important; border-color: rgba(255, 255, 255, 0.1) !important; color: #e8e8e8; }
         body.dark-theme .search-input::placeholder { color: #888; }
@@ -90,6 +130,102 @@
 
         /* Export menu hover */
         .export-menu-item:hover { background: rgba(0, 0, 0, 0.05); }
+
+        /* Markdown rendering styles */
+        .markdown-content { line-height: 1.6; }
+        .markdown-content p { margin: 0 0 12px 0; }
+        .markdown-content p:last-child { margin-bottom: 0; }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 { margin: 16px 0 8px 0; font-weight: 600; }
+        .markdown-content h1 { font-size: 1.5em; }
+        .markdown-content h2 { font-size: 1.3em; }
+        .markdown-content h3 { font-size: 1.1em; }
+        .markdown-content ul, .markdown-content ol { margin: 8px 0; padding-left: 24px; }
+        .markdown-content li { margin: 4px 0; }
+        .markdown-content code:not(.code-block) { background: rgba(0, 0, 0, 0.06); padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9em; }
+        .markdown-content pre { margin: 12px 0; border-radius: 8px; overflow: hidden; }
+        .markdown-content .code-block-container { position: relative; background: #1e1e1e; border-radius: 8px; }
+        .markdown-content .code-block-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #2d2d2d; border-bottom: 1px solid #3d3d3d; font-size: 12px; color: #888; }
+        .markdown-content .code-block-lang { text-transform: uppercase; font-weight: 500; }
+        .markdown-content .code-copy-btn { background: transparent; border: 1px solid #555; color: #ccc; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+        .markdown-content .code-copy-btn:hover { background: #444; border-color: #666; }
+        .markdown-content .code-block { display: block; padding: 16px; overflow-x: auto; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.5; color: #d4d4d4; white-space: pre; background: #1e1e1e; margin: 0; }
+        .markdown-content blockquote { margin: 12px 0; padding: 8px 16px; border-left: 4px solid #0078d4; background: rgba(0, 120, 212, 0.05); }
+        .markdown-content a { color: #0078d4; text-decoration: none; }
+        .markdown-content a:hover { text-decoration: underline; }
+        .markdown-content strong { font-weight: 600; }
+        .markdown-content em { font-style: italic; }
+        .markdown-content hr { border: none; border-top: 1px solid rgba(0, 0, 0, 0.1); margin: 16px 0; }
+        .markdown-content table { border-collapse: collapse; margin: 12px 0; width: 100%; }
+        .markdown-content th, .markdown-content td { border: 1px solid rgba(0, 0, 0, 0.1); padding: 8px 12px; text-align: left; }
+        .markdown-content th { background: rgba(0, 0, 0, 0.03); font-weight: 600; }
+        body.dark-theme .markdown-content code:not(.code-block) { background: rgba(255, 255, 255, 0.1); }
+        body.dark-theme .markdown-content blockquote { background: rgba(0, 120, 212, 0.1); }
+        body.dark-theme .markdown-content hr { border-top-color: rgba(255, 255, 255, 0.1); }
+        body.dark-theme .markdown-content th, body.dark-theme .markdown-content td { border-color: rgba(255, 255, 255, 0.1); }
+        body.dark-theme .markdown-content th { background: rgba(255, 255, 255, 0.05); }
+
+        /* Syntax highlighting */
+        .hljs-keyword { color: #569cd6; }
+        .hljs-string { color: #ce9178; }
+        .hljs-number { color: #b5cea8; }
+        .hljs-comment { color: #6a9955; }
+        .hljs-function { color: #dcdcaa; }
+        .hljs-class { color: #4ec9b0; }
+        .hljs-variable { color: #9cdcfe; }
+        .hljs-operator { color: #d4d4d4; }
+        .hljs-punctuation { color: #d4d4d4; }
+        .hljs-property { color: #9cdcfe; }
+        .hljs-attr { color: #9cdcfe; }
+        .hljs-tag { color: #569cd6; }
+        .hljs-attribute { color: #9cdcfe; }
+        .hljs-built_in { color: #4ec9b0; }
+        .hljs-type { color: #4ec9b0; }
+        .hljs-params { color: #9cdcfe; }
+        .hljs-literal { color: #569cd6; }
+        .hljs-meta { color: #569cd6; }
+        .hljs-title { color: #dcdcaa; }
+
+        /* Pinned chat styles */
+        .chat-pin-btn { opacity: 0; transition: opacity 0.15s ease; }
+        .chat-item:hover .chat-pin-btn { opacity: 1; }
+        .chat-item .chat-pin-btn.pinned { opacity: 1; }
+        .pinned-divider { font-size: 11px; font-weight: 600; color: #888; padding: 8px 16px 4px 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Rename input styles */
+        .chat-rename-input { background: transparent; border: 1px solid #0078d4; border-radius: 4px; padding: 4px 8px; font-size: 14px; color: inherit; width: 100%; outline: none; }
+        body.dark-theme .chat-rename-input { color: #e8e8e8; }
+
+        /* Stop button styles */
+        .stop-btn { background: transparent !important; border: 1px solid rgba(0, 0, 0, 0.15) !important; color: #666 !important; }
+        .stop-btn:hover { background: rgba(0, 0, 0, 0.05) !important; border-color: rgba(0, 0, 0, 0.25) !important; color: #333 !important; }
+        .stop-btn svg { fill: #666 !important; }
+        .stop-btn:hover svg { fill: #333 !important; }
+        body.dark-theme .stop-btn { border-color: rgba(255, 255, 255, 0.15) !important; color: #999 !important; }
+        body.dark-theme .stop-btn:hover { background: rgba(255, 255, 255, 0.08) !important; border-color: rgba(255, 255, 255, 0.25) !important; color: #ddd !important; }
+        body.dark-theme .stop-btn svg { fill: #999 !important; }
+        body.dark-theme .stop-btn:hover svg { fill: #ddd !important; }
+
+        /* Folder styles */
+        .folder-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-radius: 6px; margin-bottom: 2px; user-select: none; }
+        .folder-header:hover { background: rgba(0, 0, 0, 0.04); }
+        body.dark-theme .folder-header:hover { background: rgba(255, 255, 255, 0.06); }
+        .folder-chevron { transition: transform 0.15s ease; }
+        .folder-chevron.expanded { transform: rotate(90deg); }
+        .folder-chats { padding-left: 8px; }
+        .folder-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
+        .folder-header:hover .folder-actions { opacity: 1; }
+        .folder-action-btn { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+        .folder-action-btn:hover { background: rgba(0, 0, 0, 0.08); }
+        body.dark-theme .folder-action-btn:hover { background: rgba(255, 255, 255, 0.1); }
+        .folder-color-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .add-folder-btn { display: flex; align-items: center; gap: 6px; padding: 8px 12px; cursor: pointer; border-radius: 6px; color: #666; font-size: 13px; margin-top: 8px; }
+        .add-folder-btn:hover { background: rgba(0, 0, 0, 0.04); color: #0078d4; }
+        body.dark-theme .add-folder-btn { color: #888; }
+        body.dark-theme .add-folder-btn:hover { background: rgba(255, 255, 255, 0.06); color: #0078d4; }
+        .folder-rename-input { background: transparent; border: 1px solid #0078d4; border-radius: 4px; padding: 4px 8px; font-size: 13px; color: inherit; width: 100%; outline: none; }
+        body.dark-theme .folder-rename-input { color: #e8e8e8; }
+        .move-menu-item:hover { background: rgba(0, 0, 0, 0.05); }
+        body.dark-theme .move-menu-item:hover { background: rgba(255, 255, 255, 0.08); }
 
         /* Drag and drop styles */
         .drop-zone { transition: all 0.2s ease; }
@@ -133,6 +269,40 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         };
+
+        window.setupKeyboardShortcuts = function(dotNetRef) {
+            document.addEventListener('keydown', function(e) {
+                // Ctrl+K or Cmd+K - New Chat
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    dotNetRef.invokeMethodAsync('HandleNewChatShortcut');
+                }
+                // Ctrl+/ or Cmd+/ - Focus Search
+                if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+                    e.preventDefault();
+                    dotNetRef.invokeMethodAsync('HandleSearchShortcut');
+                }
+                // Escape - Cancel current action
+                if (e.key === 'Escape') {
+                    dotNetRef.invokeMethodAsync('HandleEscapeShortcut');
+                }
+            });
+        };
+
+        window.focusElement = function(selector) {
+            const el = document.querySelector(selector);
+            if (el) el.focus();
+        };
+
+        window.copyCodeBlock = async function(code) {
+            try {
+                await navigator.clipboard.writeText(code);
+                return true;
+            } catch (err) {
+                console.error('Failed to copy code:', err);
+                return false;
+            }
+        };
     </script>
 </HeadContent>
 
@@ -161,25 +331,98 @@
         </div>
 
         <div style="flex: 1; overflow-y: auto;">
-            @foreach (var chat in _filteredChats)
+            @{
+                var pinnedChats = _filteredChats.Where(c => c.IsPinned).ToList();
+                var folderedChats = _filteredChats.Where(c => c.FolderId.HasValue && !c.IsPinned).ToList();
+                var unfolderedChats = _filteredChats.Where(c => !c.FolderId.HasValue && !c.IsPinned).ToList();
+            }
+
+            @* Pinned chats section *@
+            @if (pinnedChats.Any())
             {
-                <div class="chat-item" @onclick="() => SelectChat(chat)"
-                     style="padding: 12px 16px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; @(chat.Id == _selectedChat?.Id ? "background: rgba(0, 120, 212, 0.1);" : "")">
-                    <div style="flex: 1; min-width: 0;">
-                        <div class="chat-list-title" style="font-size: 14px; color: #242424; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            @chat.Title
+                <div class="pinned-divider">Pinned</div>
+                @foreach (var chat in pinnedChats)
+                {
+                    @RenderChatItem(chat)
+                }
+            }
+
+            @* Folders section *@
+            @foreach (var folder in _folders.OrderBy(f => f.SortOrder))
+            {
+                var folderChats = folderedChats.Where(c => c.FolderId == folder.Id).ToList();
+                @if (folderChats.Any() || string.IsNullOrEmpty(_searchQuery))
+                {
+                    <div class="folder-section">
+                        <div class="folder-header" @onclick="() => ToggleFolder(folder.Id)">
+                            <svg class="folder-chevron @(_expandedFolderIds.Contains(folder.Id) ? "expanded" : "")" width="12" height="12" viewBox="0 0 16 16" fill="#666">
+                                <path d="M6 4l4 4-4 4"/>
+                            </svg>
+                            @if (!string.IsNullOrEmpty(folder.Color))
+                            {
+                                <div class="folder-color-dot" style="background: @folder.Color;"></div>
+                            }
+                            @if (_renamingFolderId == folder.Id)
+                            {
+                                <input type="text"
+                                       @bind="_renameFolderName"
+                                       @bind:event="oninput"
+                                       @onkeydown="(e) => HandleFolderRenameKeyDown(e, folder)"
+                                       @onblur="() => SaveRenamedFolder(folder)"
+                                       @onclick:stopPropagation="true"
+                                       class="folder-rename-input"
+                                       style="flex: 1;"
+                                       autofocus />
+                            }
+                            else
+                            {
+                                <span style="flex: 1; font-size: 13px; font-weight: 500; color: #444;" @ondblclick="() => StartRenameFolder(folder)" @ondblclick:stopPropagation="true">
+                                    @folder.Name
+                                </span>
+                            }
+                            <span style="font-size: 11px; color: #888;">@folderChats.Count</span>
+                            <div class="folder-actions" @onclick:stopPropagation="true">
+                                <button class="folder-action-btn" @onclick="() => DeleteFolder(folder)" title="Delete folder">
+                                    <svg width="14" height="14" viewBox="0 0 20 20" fill="#888">
+                                        <path d="M8.5 4h3a1.5 1.5 0 00-3 0zm-1 0a2.5 2.5 0 015 0h5a.5.5 0 010 1h-1.054l-1.194 10.344A3 3 0 0112.272 18H7.728a3 3 0 01-2.98-2.656L3.554 5H2.5a.5.5 0 010-1h5z"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
-                        <div class="chat-list-time" style="font-size: 12px; color: #666; margin-top: 4px;">
-                            @((chat.UpdatedAt ?? chat.CreatedAt).ToString("MMM d, h:mm tt"))
-                        </div>
+                        @if (_expandedFolderIds.Contains(folder.Id))
+                        {
+                            <div class="folder-chats">
+                                @foreach (var chat in folderChats)
+                                {
+                                    @RenderChatItem(chat)
+                                }
+                            </div>
+                        }
                     </div>
-                    <button class="chat-item-delete" @onclick="() => DeleteChat(chat)" @onclick:stopPropagation="true"
-                            title="Delete chat"
-                            style="background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                        <svg width="16" height="16" viewBox="0 0 20 20" fill="#888">
-                            <path d="M8.5 4h3a1.5 1.5 0 00-3 0zm-1 0a2.5 2.5 0 015 0h5a.5.5 0 010 1h-1.054l-1.194 10.344A3 3 0 0112.272 18H7.728a3 3 0 01-2.98-2.656L3.554 5H2.5a.5.5 0 010-1h5zM5.741 15.23A2 2 0 007.728 17h4.544a2 2 0 001.987-1.77L15.439 5H4.561l1.18 10.23zM8.5 7.5a.5.5 0 01.5.5v6a.5.5 0 01-1 0V8a.5.5 0 01.5-.5zm3 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V8a.5.5 0 01.5-.5z"/>
-                        </svg>
-                    </button>
+                }
+            }
+
+            @* Unfoldered chats *@
+            @if (unfolderedChats.Any())
+            {
+                @if (_folders.Any() || pinnedChats.Any())
+                {
+                    <div class="pinned-divider" style="margin-top: 8px;">Recent</div>
+                }
+                @foreach (var chat in unfolderedChats)
+                {
+                    @RenderChatItem(chat)
+                }
+            }
+
+            @* Add folder button *@
+            @if (string.IsNullOrEmpty(_searchQuery))
+            {
+                <div class="add-folder-btn" @onclick="ShowAddFolderDialog">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 2.5C10.2761 2.5 10.5 2.72386 10.5 3V9.5H17C17.2761 9.5 17.5 9.72386 17.5 10C17.5 10.2761 17.2761 10.5 17 10.5H10.5V17C10.5 17.2761 10.2761 17.5 10 17.5C9.72386 17.5 9.5 17.2761 9.5 17V10.5H3C2.72386 10.5 2.5 10.2761 2.5 10C2.5 9.72386 2.72386 9.5 3 9.5H9.5V3C9.5 2.72386 9.72386 2.5 10 2.5Z"/>
+                    </svg>
+                    New Folder
                 </div>
             }
         </div>
@@ -299,7 +542,14 @@
                             }
                             else
                             {
-                                <div style="white-space: pre-wrap; line-height: 1.6;">@message.Content</div>
+                                @if (message.Role == MessageRole.Assistant)
+                                {
+                                    <div class="markdown-content">@((MarkupString)RenderMarkdown(message.Content))</div>
+                                }
+                                else
+                                {
+                                    <div style="white-space: pre-wrap; line-height: 1.6;">@message.Content</div>
+                                }
                             }
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
                                 <div class="message-timestamp" style="font-size: 11px; color: #888;">
@@ -323,6 +573,21 @@
                                             <svg viewBox="0 0 20 20" fill="currentColor"><path d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H4.75a.75.75 0 00-.75.75v3.482a.75.75 0 001.5 0v-1.975l.243.245a7 7 0 0011.71-3.144.75.75 0 00-1.141-.013zm-10.624-4.85a5.5 5.5 0 019.201-2.465l.312.31H12.27a.75.75 0 000 1.5h3.482a.75.75 0 00.75-.75V1.687a.75.75 0 00-1.5 0v1.975l-.243-.245a7 7 0 00-11.71 3.144.75.75 0 001.14.013z"/></svg>
                                             Regenerate
                                         </button>
+                                        <div class="reaction-divider"></div>
+                                        <button class="reaction-btn @(GetReactionClass(message.Id, ReactionTypeThumbsUp))"
+                                                @onclick="@(() => ToggleReaction(message.Id, ReactionTypeThumbsUp))"
+                                                title="Good response">
+                                            <svg viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                                                <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z"/>
+                                            </svg>
+                                        </button>
+                                        <button class="reaction-btn @(GetReactionClass(message.Id, ReactionTypeThumbsDown))"
+                                                @onclick="@(() => ToggleReaction(message.Id, ReactionTypeThumbsDown))"
+                                                title="Bad response">
+                                            <svg viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                                                <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.106-1.79l-.05-.025A4 4 0 0011.057 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z"/>
+                                            </svg>
+                                        </button>
                                     }
                                 </div>
                             </div>
@@ -339,9 +604,13 @@
                                 </div>
                                 <span class="assistant-name" style="font-size: 13px; font-weight: 600; color: #242424;">@_aiAssistantName</span>
                             </div>
-                            <div style="white-space: pre-wrap; line-height: 1.6;">@_streamingContent</div>
-                            <div style="margin-top: 12px;">
-                                <FluentProgress />
+                            <div class="markdown-content">@((MarkupString)RenderMarkdown(_streamingContent))</div>
+                            <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px;">
+                                <FluentProgress style="flex: 1;" />
+                                <button @onclick="StopGeneration" class="message-action-btn stop-btn" title="Stop generating (Esc)">
+                                    <svg viewBox="0 0 20 20" fill="currentColor" style="width: 12px; height: 12px;"><rect x="5" y="5" width="10" height="10" rx="1.5"/></svg>
+                                    Stop
+                                </button>
                             </div>
                         </div>
                     }
@@ -428,6 +697,72 @@
     </div>
 </div>
 
+@* Create Folder Dialog *@
+@if (_showFolderDialog)
+{
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;" @onclick="CloseFolderDialog">
+        <div class="glass-card" style="width: 400px; max-width: 90vw; padding: 24px;" @onclick:stopPropagation="true">
+            <h5 style="margin: 0 0 20px 0;">Create Folder</h5>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Folder Name</label>
+                <input type="text" @bind="_newFolderName" @bind:event="oninput"
+                       @onkeydown="@(async (e) => { if (e.Key == "Enter") await CreateFolder(); else if (e.Key == "Escape") CloseFolderDialog(); })"
+                       placeholder="e.g., Work, Personal, Projects..."
+                       style="width: 100%; padding: 10px 12px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; font-size: 14px;" autofocus />
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Color</label>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    @foreach (var color in new[] { "#0078d4", "#5c2d91", "#107c10", "#ffb900", "#d13438", "#00bcd4", "#e91e63", "#888" })
+                    {
+                        <div @onclick="() => _newFolderColor = color"
+                             style="width: 32px; height: 32px; border-radius: 50%; background: @color; cursor: pointer; border: 3px solid @(_newFolderColor == color ? "#333" : "transparent"); transition: border-color 0.15s ease;">
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <FluentButton Appearance="Appearance.Stealth" OnClick="CloseFolderDialog">Cancel</FluentButton>
+                <FluentButton Appearance="Appearance.Accent" OnClick="CreateFolder" Disabled="@string.IsNullOrWhiteSpace(_newFolderName)">Create Folder</FluentButton>
+            </div>
+        </div>
+    </div>
+}
+
+@* Feedback Dialog for negative reactions *@
+@if (_showFeedbackDialog)
+{
+    <div class="feedback-dialog-overlay" @onclick="CloseFeedbackDialog">
+        <div class="feedback-dialog" @onclick:stopPropagation="true">
+            <h3>What was wrong with this response?</h3>
+            <p style="font-size: 14px; color: #666; margin-bottom: 16px;">Your feedback helps improve the AI.</p>
+
+            <div class="feedback-category-list">
+                @foreach (var category in _feedbackCategories)
+                {
+                    <div class="feedback-category @(_feedbackCategory == category ? "selected" : "")"
+                         @onclick="() => _feedbackCategory = category">
+                        <input type="radio" name="feedback-category" checked="@(_feedbackCategory == category)" style="margin: 0;" />
+                        <span style="font-size: 14px;">@GetCategoryLabel(category)</span>
+                    </div>
+                }
+            </div>
+
+            <textarea class="feedback-textarea"
+                      @bind="_feedbackText"
+                      placeholder="Optional: Tell us more about what went wrong..."></textarea>
+
+            <div class="feedback-actions">
+                <button class="feedback-btn feedback-btn-cancel" @onclick="CloseFeedbackDialog">Cancel</button>
+                <button class="feedback-btn feedback-btn-submit" @onclick="SubmitFeedback">Submit Feedback</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<ChatDto> _chats = new();
     private List<ChatDto> _filteredChats = new();
@@ -450,6 +785,36 @@
     // Export menu state
     private bool _showExportMenu;
 
+    // Pin/favorite state
+    private HashSet<Guid> _pinnedChatIds = new();
+
+    // Rename state
+    private Guid? _renamingChatId;
+    private string _renameChatTitle = "";
+
+    // Folder state
+    private List<ChatFolder> _folders = new();
+    private HashSet<Guid> _expandedFolderIds = new();
+    private Guid? _renamingFolderId;
+    private string _renameFolderName = "";
+    private bool _showFolderDialog;
+    private string _newFolderName = "";
+    private string _newFolderColor = "#0078d4";
+    private Guid? _movingChatId;
+
+    // Reaction/feedback state
+    private Dictionary<Guid, string> _messageReactions = new(); // MessageId -> ReactionType
+    private bool _showFeedbackDialog;
+    private Guid? _feedbackMessageId;
+    private string _feedbackCategory = "";
+    private string _feedbackText = "";
+    private readonly string[] _feedbackCategories = { "incorrect", "incomplete", "harmful", "off_topic", "other" };
+    private const string ReactionTypeThumbsUp = "thumbs_up";
+    private const string ReactionTypeThumbsDown = "thumbs_down";
+
+    // .NET reference for JS interop
+    private DotNetObjectReference<Home>? _dotNetRef;
+
     // File upload state
     private List<MessageAttachmentDto> _pendingAttachments = new();
     private InputFile? _fileInput;
@@ -466,6 +831,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadConfiguration();
+        await LoadFolders();
         await LoadChats();
     }
 
@@ -474,7 +840,15 @@
         if (firstRender)
         {
             await JSRuntime.InvokeVoidAsync("setupDropZone", "drop-zone", "fileUploadInput");
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("setupKeyboardShortcuts", _dotNetRef);
+            await LoadPinnedChats();
         }
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
     }
 
     private async Task LoadConfiguration()
@@ -554,10 +928,12 @@
         if (_selectedChat == null) return;
 
         _messages.Clear();
+        _messageReactions.Clear();
         var chatDetail = await Mediator.Send(new GetChatMessagesQuery(_selectedChat.Id));
         if (chatDetail != null)
         {
             _messages = chatDetail.Messages.ToList();
+            await LoadMessageReactions();
         }
         StateHasChanged();
     }
@@ -631,6 +1007,9 @@
             string? systemPrompt = null;
             var accessibleDataSourceIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
 
+            // Load user memories for context
+            var userMemories = await GetUserMemoriesAsync();
+
             if (accessibleDataSourceIds.Any())
             {
                 try
@@ -662,6 +1041,9 @@
                     ToastService.ShowWarning($"Note: Could not search documents: {ex.Message}");
                 }
             }
+
+            // Inject user memories into system prompt
+            systemPrompt = BuildSystemPromptWithMemories(systemPrompt, userMemories);
 
             // Stream response directly from AI service
             var responseBuilder = new System.Text.StringBuilder();
@@ -971,6 +1353,9 @@
             var accessibleDataSourceIds = await CurrentUser.GetAccessibleDataSourceIdsAsync();
             var lastUserMessage = _messages.LastOrDefault(m => m.Role == MessageRole.User);
 
+            // Load user memories for context
+            var userMemories = await GetUserMemoriesAsync();
+
             if (accessibleDataSourceIds.Any() && lastUserMessage != null)
             {
                 try
@@ -990,6 +1375,9 @@
                 }
                 catch { /* Continue without RAG */ }
             }
+
+            // Inject user memories into system prompt
+            systemPrompt = BuildSystemPromptWithMemories(systemPrompt, userMemories);
 
             // Stream response
             var responseBuilder = new System.Text.StringBuilder();
@@ -1171,5 +1559,874 @@
     {
         _showExportMenu = false;
         await ExportChat(format);
+    }
+
+    // Markdown rendering with syntax highlighting
+    private string RenderMarkdown(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return "";
+
+        var sb = new System.Text.StringBuilder();
+        var lines = content.Split('\n');
+        var inCodeBlock = false;
+        var codeBlockContent = new System.Text.StringBuilder();
+        var codeLanguage = "";
+        var codeBlockId = 0;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine;
+
+            // Handle code blocks
+            if (line.TrimStart().StartsWith("```"))
+            {
+                if (!inCodeBlock)
+                {
+                    inCodeBlock = true;
+                    codeLanguage = line.TrimStart().Substring(3).Trim();
+                    codeBlockContent.Clear();
+                }
+                else
+                {
+                    inCodeBlock = false;
+                    var code = System.Net.WebUtility.HtmlEncode(codeBlockContent.ToString().TrimEnd());
+                    var highlightedCode = ApplySyntaxHighlighting(code, codeLanguage);
+                    codeBlockId++;
+                    sb.AppendLine($"<div class=\"code-block-container\">");
+                    sb.AppendLine($"<div class=\"code-block-header\"><span class=\"code-block-lang\">{(string.IsNullOrEmpty(codeLanguage) ? "code" : codeLanguage)}</span>");
+                    sb.AppendLine($"<button class=\"code-copy-btn\" onclick=\"copyCodeBlock(decodeURIComponent('{Uri.EscapeDataString(codeBlockContent.ToString().TrimEnd())}'))\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 20 20\" fill=\"currentColor\"><path d=\"M8 2a2 2 0 00-2 2v10a2 2 0 002 2h6a2 2 0 002-2V4a2 2 0 00-2-2H8zM6 4a2 2 0 012-2h.5v1H8a1 1 0 00-1 1v10a1 1 0 001 1h6a1 1 0 001-1V4a1 1 0 00-1-1h-.5V2H14a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V4z\"/><path d=\"M4 6a2 2 0 012-2h.5v1H6a1 1 0 00-1 1v10a1 1 0 001 1h6a1 1 0 001-1v-.5h1v.5a2 2 0 01-2 2H6a2 2 0 01-2-2V6z\"/></svg>Copy</button></div>");
+                    sb.AppendLine($"<pre><code class=\"code-block\">{highlightedCode}</code></pre></div>");
+                    codeLanguage = "";
+                }
+                continue;
+            }
+
+            if (inCodeBlock)
+            {
+                codeBlockContent.AppendLine(line);
+                continue;
+            }
+
+            // Process inline markdown
+            line = ProcessInlineMarkdown(line);
+
+            // Headers
+            if (line.StartsWith("### "))
+                line = $"<h3>{line.Substring(4)}</h3>";
+            else if (line.StartsWith("## "))
+                line = $"<h2>{line.Substring(3)}</h2>";
+            else if (line.StartsWith("# "))
+                line = $"<h1>{line.Substring(2)}</h1>";
+            // Blockquote
+            else if (line.StartsWith("> "))
+                line = $"<blockquote>{line.Substring(2)}</blockquote>";
+            // Horizontal rule
+            else if (line.Trim() == "---" || line.Trim() == "***")
+                line = "<hr/>";
+            // Unordered list
+            else if (Regex.IsMatch(line, @"^[\*\-\+]\s"))
+                line = $"<li>{line.Substring(2)}</li>";
+            // Ordered list
+            else if (Regex.IsMatch(line, @"^\d+\.\s"))
+                line = $"<li>{Regex.Replace(line, @"^\d+\.\s", "")}</li>";
+            // Regular paragraph
+            else if (!string.IsNullOrWhiteSpace(line))
+                line = $"<p>{line}</p>";
+
+            sb.AppendLine(line);
+        }
+
+        // Handle unclosed code block
+        if (inCodeBlock)
+        {
+            var code = System.Net.WebUtility.HtmlEncode(codeBlockContent.ToString().TrimEnd());
+            var highlightedCode = ApplySyntaxHighlighting(code, codeLanguage);
+            sb.AppendLine($"<div class=\"code-block-container\">");
+            sb.AppendLine($"<div class=\"code-block-header\"><span class=\"code-block-lang\">{(string.IsNullOrEmpty(codeLanguage) ? "code" : codeLanguage)}</span></div>");
+            sb.AppendLine($"<pre><code class=\"code-block\">{highlightedCode}</code></pre></div>");
+        }
+
+        // Wrap consecutive list items in ul/ol
+        var result = sb.ToString();
+        result = Regex.Replace(result, @"(<li>.*?</li>\n?)+", m => $"<ul>{m.Value}</ul>");
+
+        return result;
+    }
+
+    private string ProcessInlineMarkdown(string line)
+    {
+        // Bold: **text** or __text__
+        line = Regex.Replace(line, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        line = Regex.Replace(line, @"__(.+?)__", "<strong>$1</strong>");
+
+        // Italic: *text* or _text_
+        line = Regex.Replace(line, @"\*([^*]+)\*", "<em>$1</em>");
+        line = Regex.Replace(line, @"_([^_]+)_", "<em>$1</em>");
+
+        // Inline code: `code`
+        line = Regex.Replace(line, @"`([^`]+)`", m => $"<code>{System.Net.WebUtility.HtmlEncode(m.Groups[1].Value)}</code>");
+
+        // Links: [text](url)
+        line = Regex.Replace(line, @"\[([^\]]+)\]\(([^)]+)\)", "<a href=\"$2\" target=\"_blank\" rel=\"noopener\">$1</a>");
+
+        return line;
+    }
+
+    private string ApplySyntaxHighlighting(string code, string language)
+    {
+        // Basic syntax highlighting for common languages
+        var lang = language.ToLowerInvariant();
+
+        // Keywords by language
+        var keywords = lang switch
+        {
+            "csharp" or "c#" or "cs" => new[] { "using", "namespace", "class", "public", "private", "protected", "internal", "static", "void", "string", "int", "bool", "var", "new", "return", "if", "else", "for", "foreach", "while", "try", "catch", "finally", "throw", "async", "await", "override", "virtual", "abstract", "interface", "struct", "enum", "const", "readonly", "null", "true", "false", "this", "base", "get", "set", "value", "where", "select", "from", "in", "out", "ref", "params", "yield", "break", "continue", "switch", "case", "default", "typeof", "sizeof", "is", "as", "lock", "checked", "unchecked", "fixed", "delegate", "event", "operator", "implicit", "explicit", "extern", "unsafe", "volatile", "stackalloc", "nameof", "record", "init", "required", "partial" },
+            "javascript" or "js" or "typescript" or "ts" => new[] { "const", "let", "var", "function", "return", "if", "else", "for", "while", "do", "switch", "case", "break", "continue", "default", "try", "catch", "finally", "throw", "new", "this", "class", "extends", "super", "import", "export", "from", "as", "async", "await", "yield", "null", "undefined", "true", "false", "typeof", "instanceof", "in", "of", "delete", "void", "static", "get", "set", "constructor", "interface", "type", "enum", "implements", "private", "public", "protected", "readonly", "abstract" },
+            "python" or "py" => new[] { "def", "class", "return", "if", "elif", "else", "for", "while", "try", "except", "finally", "raise", "import", "from", "as", "with", "pass", "break", "continue", "and", "or", "not", "in", "is", "None", "True", "False", "lambda", "yield", "global", "nonlocal", "assert", "del", "async", "await", "self", "cls" },
+            "java" => new[] { "public", "private", "protected", "static", "final", "abstract", "class", "interface", "extends", "implements", "new", "return", "if", "else", "for", "while", "do", "switch", "case", "break", "continue", "default", "try", "catch", "finally", "throw", "throws", "import", "package", "void", "int", "long", "double", "float", "boolean", "char", "byte", "short", "null", "true", "false", "this", "super", "instanceof", "enum", "assert", "synchronized", "volatile", "transient", "native", "strictfp" },
+            "sql" => new[] { "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "IS", "NULL", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "TABLE", "INDEX", "VIEW", "DROP", "ALTER", "ADD", "COLUMN", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "DEFAULT", "CHECK", "CONSTRAINT", "AS", "DISTINCT", "COUNT", "SUM", "AVG", "MIN", "MAX", "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL", "EXISTS", "EXEC", "DECLARE", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION" },
+            "html" or "xml" => Array.Empty<string>(),
+            "css" or "scss" or "sass" => new[] { "important", "none", "auto", "inherit", "initial", "unset" },
+            "bash" or "sh" or "shell" => new[] { "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case", "esac", "function", "return", "exit", "echo", "read", "export", "local", "readonly", "shift", "break", "continue", "true", "false", "in" },
+            "go" => new[] { "package", "import", "func", "return", "if", "else", "for", "range", "switch", "case", "default", "break", "continue", "fallthrough", "goto", "defer", "go", "select", "chan", "map", "struct", "interface", "type", "const", "var", "true", "false", "nil", "iota", "make", "new", "append", "len", "cap", "close", "copy", "delete", "panic", "recover" },
+            "rust" => new[] { "fn", "let", "mut", "const", "static", "if", "else", "match", "loop", "while", "for", "in", "break", "continue", "return", "struct", "enum", "impl", "trait", "type", "where", "pub", "mod", "use", "crate", "self", "super", "as", "async", "await", "dyn", "move", "ref", "unsafe", "extern", "true", "false", "Some", "None", "Ok", "Err", "Self" },
+            _ => Array.Empty<string>()
+        };
+
+        if (keywords.Length > 0)
+        {
+            // Highlight strings first (to avoid keyword highlighting inside strings)
+            code = Regex.Replace(code, @"(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;|&apos;[^&]*?&apos;)", "<span class=\"hljs-string\">$1</span>");
+            code = Regex.Replace(code, @"(""[^""]*?"")", "<span class=\"hljs-string\">$1</span>");
+
+            // Highlight comments
+            code = Regex.Replace(code, @"(//.*?)$", "<span class=\"hljs-comment\">$1</span>", RegexOptions.Multiline);
+            code = Regex.Replace(code, @"(#.*?)$", "<span class=\"hljs-comment\">$1</span>", RegexOptions.Multiline);
+            code = Regex.Replace(code, @"(/\*[\s\S]*?\*/)", "<span class=\"hljs-comment\">$1</span>");
+
+            // Highlight numbers
+            code = Regex.Replace(code, @"\b(\d+\.?\d*)\b", "<span class=\"hljs-number\">$1</span>");
+
+            // Highlight keywords
+            foreach (var keyword in keywords)
+            {
+                code = Regex.Replace(code, $@"\b({Regex.Escape(keyword)})\b", "<span class=\"hljs-keyword\">$1</span>", RegexOptions.IgnoreCase);
+            }
+        }
+
+        return code;
+    }
+
+    // Keyboard shortcuts
+    [JSInvokable]
+    public async Task HandleNewChatShortcut()
+    {
+        await CreateNewChat();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task HandleSearchShortcut()
+    {
+        await JSRuntime.InvokeVoidAsync("focusElement", ".search-input");
+    }
+
+    [JSInvokable]
+    public void HandleEscapeShortcut()
+    {
+        // Cancel edit mode
+        if (_editingMessageId != null)
+        {
+            CancelEdit();
+        }
+        // Cancel rename mode
+        if (_renamingChatId != null)
+        {
+            CancelRename();
+        }
+        // Close export menu
+        if (_showExportMenu)
+        {
+            _showExportMenu = false;
+            StateHasChanged();
+        }
+        // Stop generation
+        if (_isStreaming)
+        {
+            StopGeneration();
+        }
+    }
+
+    // Stop generation
+    private void StopGeneration()
+    {
+        _streamingCts?.Cancel();
+    }
+
+    // Pin/favorite functionality
+    private async Task LoadPinnedChats()
+    {
+        // Load pinned chat IDs from local storage via JS
+        try
+        {
+            var pinnedJson = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "datachat_pinned_chats");
+            if (!string.IsNullOrEmpty(pinnedJson))
+            {
+                var pinnedIds = JsonSerializer.Deserialize<List<Guid>>(pinnedJson);
+                _pinnedChatIds = new HashSet<Guid>(pinnedIds ?? new List<Guid>());
+            }
+        }
+        catch { /* Ignore localStorage errors */ }
+        StateHasChanged();
+    }
+
+    private async Task TogglePinChat(ChatDto chat)
+    {
+        try
+        {
+            var chatEntity = await DbContext.Chats.FindAsync(chat.Id);
+            if (chatEntity != null)
+            {
+                chatEntity.IsPinned = !chatEntity.IsPinned;
+                await DbContext.SaveChangesAsync();
+
+                // Update local state
+                var chatIndex = _chats.FindIndex(c => c.Id == chat.Id);
+                if (chatIndex >= 0)
+                {
+                    _chats[chatIndex] = chat with { IsPinned = chatEntity.IsPinned };
+                }
+                if (_selectedChat?.Id == chat.Id)
+                {
+                    _selectedChat = _selectedChat with { IsPinned = chatEntity.IsPinned };
+                }
+
+                FilterChats();
+                ToastService.ShowInfo(chatEntity.IsPinned ? "Chat pinned" : "Chat unpinned");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to pin: {ex.Message}");
+        }
+    }
+
+    // Rename functionality
+    private void StartRenameChat(ChatDto chat)
+    {
+        _renamingChatId = chat.Id;
+        _renameChatTitle = chat.Title;
+        StateHasChanged();
+    }
+
+    private void CancelRename()
+    {
+        _renamingChatId = null;
+        _renameChatTitle = "";
+        StateHasChanged();
+    }
+
+    private async Task SaveRenamedChat(ChatDto chat)
+    {
+        if (string.IsNullOrWhiteSpace(_renameChatTitle))
+        {
+            CancelRename();
+            return;
+        }
+
+        try
+        {
+            var chatEntity = await DbContext.Chats.FindAsync(chat.Id);
+            if (chatEntity != null)
+            {
+                chatEntity.Title = _renameChatTitle.Trim();
+                chatEntity.UpdatedAt = DateTimeService.UtcNow;
+                await DbContext.SaveChangesAsync();
+
+                // Update local state
+                var chatIndex = _chats.FindIndex(c => c.Id == chat.Id);
+                if (chatIndex >= 0)
+                {
+                    _chats[chatIndex] = chat with { Title = _renameChatTitle.Trim() };
+                }
+
+                if (_selectedChat?.Id == chat.Id)
+                {
+                    _selectedChat = _selectedChat with { Title = _renameChatTitle.Trim() };
+                }
+
+                FilterChats();
+                ToastService.ShowSuccess("Chat renamed");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to rename: {ex.Message}");
+        }
+
+        _renamingChatId = null;
+        _renameChatTitle = "";
+        StateHasChanged();
+    }
+
+    private async Task HandleRenameKeyDown(KeyboardEventArgs args, ChatDto chat)
+    {
+        if (args.Key == "Enter")
+        {
+            await SaveRenamedChat(chat);
+        }
+        else if (args.Key == "Escape")
+        {
+            CancelRename();
+        }
+    }
+
+    // Render chat item helper
+    private RenderFragment RenderChatItem(ChatDto chat) => __builder =>
+    {
+        <div class="chat-item" @onclick="() => SelectChat(chat)"
+             style="padding: 12px 16px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; @(chat.Id == _selectedChat?.Id ? "background: rgba(0, 120, 212, 0.1);" : "")">
+            <div style="flex: 1; min-width: 0;">
+                @if (_renamingChatId == chat.Id)
+                {
+                    <input type="text"
+                           @bind="_renameChatTitle"
+                           @bind:event="oninput"
+                           @onkeydown="(e) => HandleRenameKeyDown(e, chat)"
+                           @onblur="() => SaveRenamedChat(chat)"
+                           @onclick:stopPropagation="true"
+                           class="chat-rename-input"
+                           autofocus />
+                }
+                else
+                {
+                    <div class="chat-list-title" style="font-size: 14px; color: #242424; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                         @ondblclick="() => StartRenameChat(chat)" @ondblclick:stopPropagation="true"
+                         title="Double-click to rename">
+                        @chat.Title
+                    </div>
+                }
+                <div class="chat-list-time" style="font-size: 12px; color: #666; margin-top: 4px;">
+                    @((chat.UpdatedAt ?? chat.CreatedAt).ToString("MMM d, h:mm tt"))
+                </div>
+            </div>
+            <div style="display: flex; gap: 2px; flex-shrink: 0;">
+                @* Move to folder button *@
+                @if (_folders.Any())
+                {
+                    <div style="position: relative;">
+                        <button class="chat-item-delete" @onclick="() => ToggleMoveMenu(chat.Id)" @onclick:stopPropagation="true"
+                                title="Move to folder"
+                                style="background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                            <svg width="14" height="14" viewBox="0 0 20 20" fill="#888">
+                                <path d="M2 5.5A2.5 2.5 0 014.5 3h4.379a1.5 1.5 0 011.06.44L11.562 5H15.5A2.5 2.5 0 0118 7.5v8a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 012 15.5v-10zM4.5 4A1.5 1.5 0 003 5.5v10A1.5 1.5 0 004.5 17h11a1.5 1.5 0 001.5-1.5v-8A1.5 1.5 0 0015.5 6h-4.379a.5.5 0 01-.353-.146L9.146 4.232A.5.5 0 008.793 4H4.5z"/>
+                            </svg>
+                        </button>
+                        @if (_movingChatId == chat.Id)
+                        {
+                            <div style="position: absolute; top: 100%; right: 0; background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100; min-width: 150px; padding: 4px 0;"
+                                 @onclick:stopPropagation="true">
+                                @if (chat.FolderId.HasValue)
+                                {
+                                    <div style="padding: 8px 12px; cursor: pointer; font-size: 13px; color: #666;"
+                                         class="move-menu-item"
+                                         @onclick="() => MoveChatToFolder(chat, null)">
+                                        Remove from folder
+                                    </div>
+                                    <div style="border-top: 1px solid rgba(0,0,0,0.1); margin: 4px 0;"></div>
+                                }
+                                @foreach (var folder in _folders)
+                                {
+                                    @if (folder.Id != chat.FolderId)
+                                    {
+                                        <div style="padding: 8px 12px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px;"
+                                             class="move-menu-item"
+                                             @onclick="() => MoveChatToFolder(chat, folder.Id)">
+                                            @if (!string.IsNullOrEmpty(folder.Color))
+                                            {
+                                                <div class="folder-color-dot" style="background: @folder.Color;"></div>
+                                            }
+                                            @folder.Name
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                <button class="chat-pin-btn @(chat.IsPinned ? "pinned" : "")" @onclick="() => TogglePinChat(chat)" @onclick:stopPropagation="true"
+                        title="@(chat.IsPinned ? "Unpin chat" : "Pin chat")"
+                        style="background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="@(chat.IsPinned ? "#0078d4" : "#888")">
+                        <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.708l3.182-3.182L2.404 8.232a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
+                    </svg>
+                </button>
+                <button class="chat-item-delete" @onclick="() => DeleteChat(chat)" @onclick:stopPropagation="true"
+                        title="Delete chat"
+                        style="background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="#888">
+                        <path d="M8.5 4h3a1.5 1.5 0 00-3 0zm-1 0a2.5 2.5 0 015 0h5a.5.5 0 010 1h-1.054l-1.194 10.344A3 3 0 0112.272 18H7.728a3 3 0 01-2.98-2.656L3.554 5H2.5a.5.5 0 010-1h5zM5.741 15.23A2 2 0 007.728 17h4.544a2 2 0 001.987-1.77L15.439 5H4.561l1.18 10.23zM8.5 7.5a.5.5 0 01.5.5v6a.5.5 0 01-1 0V8a.5.5 0 01.5-.5zm3 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V8a.5.5 0 01.5-.5z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    };
+
+    // User Memory Methods
+    private async Task<List<UserMemory>> GetUserMemoriesAsync()
+    {
+        try
+        {
+            var userId = CurrentUser.UserId;
+            if (userId == null) return new List<UserMemory>();
+
+            return await DbContext.UserMemories
+                .Where(m => m.UserId == userId.Value && m.IsActive)
+                .OrderByDescending(m => m.Priority)
+                .ThenBy(m => m.Category)
+                .ToListAsync();
+        }
+        catch
+        {
+            return new List<UserMemory>();
+        }
+    }
+
+    private string? BuildSystemPromptWithMemories(string? basePrompt, List<UserMemory> memories)
+    {
+        if (!memories.Any())
+            return basePrompt;
+
+        var memorySection = new System.Text.StringBuilder();
+        memorySection.AppendLine("## User Preferences & Context");
+        memorySection.AppendLine("The following are things to remember about this user. Apply these preferences and context to all responses:");
+        memorySection.AppendLine();
+
+        // Group memories by category
+        var groupedMemories = memories.GroupBy(m => m.Category);
+        foreach (var group in groupedMemories)
+        {
+            var categoryName = group.Key switch
+            {
+                "preference" => "Preferences",
+                "fact" => "Facts About User",
+                "instruction" => "Instructions",
+                "context" => "Context",
+                _ => "General"
+            };
+
+            memorySection.AppendLine($"### {categoryName}");
+            foreach (var memory in group)
+            {
+                memorySection.AppendLine($"- {memory.Content}");
+            }
+            memorySection.AppendLine();
+        }
+
+        if (string.IsNullOrEmpty(basePrompt))
+        {
+            return "You are a helpful AI assistant.\n\n" + memorySection.ToString();
+        }
+
+        return basePrompt + "\n\n" + memorySection.ToString();
+    }
+
+    // Folder Methods
+    private async Task LoadFolders()
+    {
+        try
+        {
+            var userId = CurrentUser.UserId;
+            if (userId != null)
+            {
+                _folders = await DbContext.ChatFolders
+                    .Where(f => f.UserId == userId.Value)
+                    .OrderBy(f => f.SortOrder)
+                    .ThenBy(f => f.Name)
+                    .ToListAsync();
+
+                // Expand all folders by default
+                _expandedFolderIds = new HashSet<Guid>(_folders.Select(f => f.Id));
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load folders: {ex.Message}");
+        }
+    }
+
+    private void ToggleFolder(Guid folderId)
+    {
+        if (_expandedFolderIds.Contains(folderId))
+        {
+            _expandedFolderIds.Remove(folderId);
+        }
+        else
+        {
+            _expandedFolderIds.Add(folderId);
+        }
+    }
+
+    private void ShowAddFolderDialog()
+    {
+        _showFolderDialog = true;
+        _newFolderName = "";
+        _newFolderColor = "#0078d4";
+    }
+
+    private void CloseFolderDialog()
+    {
+        _showFolderDialog = false;
+    }
+
+    private async Task CreateFolder()
+    {
+        if (string.IsNullOrWhiteSpace(_newFolderName)) return;
+
+        try
+        {
+            var userId = CurrentUser.UserId;
+            if (userId == null) return;
+
+            var folder = new ChatFolder
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId.Value,
+                Name = _newFolderName.Trim(),
+                Color = _newFolderColor,
+                SortOrder = _folders.Count,
+                CreatedAt = DateTimeService.UtcNow
+            };
+
+            DbContext.ChatFolders.Add(folder);
+            await DbContext.SaveChangesAsync();
+
+            _folders.Add(folder);
+            _expandedFolderIds.Add(folder.Id);
+            _showFolderDialog = false;
+            ToastService.ShowSuccess($"Folder '{folder.Name}' created");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to create folder: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteFolder(ChatFolder folder)
+    {
+        try
+        {
+            // Move all chats out of the folder first
+            var chatsInFolder = await DbContext.Chats
+                .Where(c => c.FolderId == folder.Id)
+                .ToListAsync();
+
+            foreach (var chat in chatsInFolder)
+            {
+                chat.FolderId = null;
+            }
+
+            DbContext.ChatFolders.Remove(folder);
+            await DbContext.SaveChangesAsync();
+
+            _folders.Remove(folder);
+            _expandedFolderIds.Remove(folder.Id);
+            await LoadChats(); // Reload to update folder assignments
+            ToastService.ShowSuccess($"Folder '{folder.Name}' deleted");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete folder: {ex.Message}");
+        }
+    }
+
+    private void StartRenameFolder(ChatFolder folder)
+    {
+        _renamingFolderId = folder.Id;
+        _renameFolderName = folder.Name;
+    }
+
+    private async Task SaveRenamedFolder(ChatFolder folder)
+    {
+        if (string.IsNullOrWhiteSpace(_renameFolderName))
+        {
+            _renamingFolderId = null;
+            return;
+        }
+
+        try
+        {
+            folder.Name = _renameFolderName.Trim();
+            folder.UpdatedAt = DateTimeService.UtcNow;
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess("Folder renamed");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to rename: {ex.Message}");
+        }
+
+        _renamingFolderId = null;
+        _renameFolderName = "";
+    }
+
+    private async Task HandleFolderRenameKeyDown(KeyboardEventArgs args, ChatFolder folder)
+    {
+        if (args.Key == "Enter")
+        {
+            await SaveRenamedFolder(folder);
+        }
+        else if (args.Key == "Escape")
+        {
+            _renamingFolderId = null;
+            _renameFolderName = "";
+        }
+    }
+
+    private void ToggleMoveMenu(Guid chatId)
+    {
+        if (_movingChatId == chatId)
+        {
+            _movingChatId = null;
+        }
+        else
+        {
+            _movingChatId = chatId;
+        }
+    }
+
+    private async Task MoveChatToFolder(ChatDto chat, Guid? folderId)
+    {
+        try
+        {
+            var chatEntity = await DbContext.Chats.FindAsync(chat.Id);
+            if (chatEntity != null)
+            {
+                chatEntity.FolderId = folderId;
+                chatEntity.UpdatedAt = DateTimeService.UtcNow;
+                await DbContext.SaveChangesAsync();
+
+                // Update local state
+                var chatIndex = _chats.FindIndex(c => c.Id == chat.Id);
+                if (chatIndex >= 0)
+                {
+                    _chats[chatIndex] = chat with { FolderId = folderId };
+                }
+                if (_selectedChat?.Id == chat.Id)
+                {
+                    _selectedChat = _selectedChat with { FolderId = folderId };
+                }
+
+                FilterChats();
+
+                var folderName = folderId.HasValue
+                    ? _folders.FirstOrDefault(f => f.Id == folderId)?.Name ?? "folder"
+                    : null;
+
+                if (folderName != null)
+                {
+                    ToastService.ShowSuccess($"Moved to '{folderName}'");
+                }
+                else
+                {
+                    ToastService.ShowInfo("Removed from folder");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to move: {ex.Message}");
+        }
+        finally
+        {
+            _movingChatId = null;
+        }
+    }
+
+    // Message Reaction Methods
+    private string GetReactionClass(Guid messageId, string reactionType)
+    {
+        if (_messageReactions.TryGetValue(messageId, out var existingReaction))
+        {
+            if (existingReaction == reactionType)
+            {
+                return reactionType == "thumbs_up" ? "active-positive" : "active-negative";
+            }
+        }
+        return "";
+    }
+
+    private async Task ToggleReaction(Guid messageId, string reactionType)
+    {
+        try
+        {
+            var userId = CurrentUser.UserId;
+            if (!userId.HasValue) return;
+
+            // Check if reaction exists for this message
+            var existingReaction = await DbContext.MessageReactions
+                .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId.Value);
+
+            if (existingReaction != null)
+            {
+                if (existingReaction.ReactionType == reactionType)
+                {
+                    // Remove reaction (toggle off)
+                    DbContext.MessageReactions.Remove(existingReaction);
+                    await DbContext.SaveChangesAsync();
+                    _messageReactions.Remove(messageId);
+                }
+                else
+                {
+                    // If changing from thumbs_up to thumbs_down, show feedback dialog
+                    if (reactionType == "thumbs_down")
+                    {
+                        _feedbackMessageId = messageId;
+                        _feedbackCategory = "";
+                        _feedbackText = "";
+                        _showFeedbackDialog = true;
+                        return;
+                    }
+
+                    // Change reaction type to thumbs_up
+                    existingReaction.ReactionType = reactionType;
+                    existingReaction.FeedbackCategory = null;
+                    existingReaction.FeedbackText = null;
+                    existingReaction.UpdatedBy = CurrentUser.WindowsIdentity;
+                    await DbContext.SaveChangesAsync();
+                    _messageReactions[messageId] = reactionType;
+                }
+            }
+            else
+            {
+                // Create new reaction
+                if (reactionType == "thumbs_down")
+                {
+                    // Show feedback dialog for negative reactions
+                    _feedbackMessageId = messageId;
+                    _feedbackCategory = "";
+                    _feedbackText = "";
+                    _showFeedbackDialog = true;
+                    return;
+                }
+
+                // Create thumbs up directly
+                var newReaction = new MessageReaction
+                {
+                    Id = Guid.NewGuid(),
+                    MessageId = messageId,
+                    UserId = userId.Value,
+                    ReactionType = reactionType,
+                    CreatedBy = CurrentUser.WindowsIdentity,
+                    CreatedAt = DateTimeService.UtcNow
+                };
+
+                DbContext.MessageReactions.Add(newReaction);
+                await DbContext.SaveChangesAsync();
+                _messageReactions[messageId] = reactionType;
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save reaction: {ex.Message}");
+        }
+    }
+
+    private async Task SubmitFeedback()
+    {
+        if (!_feedbackMessageId.HasValue) return;
+
+        try
+        {
+            var userId = CurrentUser.UserId;
+            if (!userId.HasValue) return;
+
+            // Check if reaction already exists
+            var existingReaction = await DbContext.MessageReactions
+                .FirstOrDefaultAsync(r => r.MessageId == _feedbackMessageId.Value && r.UserId == userId.Value);
+
+            if (existingReaction != null)
+            {
+                // Update existing reaction
+                existingReaction.ReactionType = "thumbs_down";
+                existingReaction.FeedbackCategory = string.IsNullOrWhiteSpace(_feedbackCategory) ? null : _feedbackCategory;
+                existingReaction.FeedbackText = string.IsNullOrWhiteSpace(_feedbackText) ? null : _feedbackText;
+                existingReaction.UpdatedBy = CurrentUser.WindowsIdentity;
+            }
+            else
+            {
+                // Create new negative reaction
+                var newReaction = new MessageReaction
+                {
+                    Id = Guid.NewGuid(),
+                    MessageId = _feedbackMessageId.Value,
+                    UserId = userId.Value,
+                    ReactionType = "thumbs_down",
+                    FeedbackCategory = string.IsNullOrWhiteSpace(_feedbackCategory) ? null : _feedbackCategory,
+                    FeedbackText = string.IsNullOrWhiteSpace(_feedbackText) ? null : _feedbackText,
+                    CreatedBy = CurrentUser.WindowsIdentity,
+                    CreatedAt = DateTimeService.UtcNow
+                };
+
+                DbContext.MessageReactions.Add(newReaction);
+            }
+
+            await DbContext.SaveChangesAsync();
+            _messageReactions[_feedbackMessageId.Value] = "thumbs_down";
+
+            ToastService.ShowSuccess("Thank you for your feedback!");
+            CloseFeedbackDialog();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save feedback: {ex.Message}");
+        }
+    }
+
+    private void CloseFeedbackDialog()
+    {
+        _showFeedbackDialog = false;
+        _feedbackMessageId = null;
+        _feedbackCategory = "";
+        _feedbackText = "";
+        StateHasChanged();
+    }
+
+    private string GetCategoryLabel(string category) => category switch
+    {
+        "incorrect" => "Factually incorrect or misleading",
+        "incomplete" => "Incomplete or missing information",
+        "harmful" => "Potentially harmful or inappropriate",
+        "off_topic" => "Didn't address my question",
+        "other" => "Other issue",
+        _ => category
+    };
+
+    private async Task LoadMessageReactions()
+    {
+        if (_selectedChat == null) return;
+
+        try
+        {
+            var userId = CurrentUser.UserId;
+            if (!userId.HasValue) return;
+
+            // Get message IDs for current chat
+            var messageIds = _messages.Select(m => m.Id).ToList();
+
+            // Load user's reactions for these messages
+            var reactions = await DbContext.MessageReactions
+                .Where(r => r.UserId == userId.Value && messageIds.Contains(r.MessageId))
+                .ToDictionaryAsync(r => r.MessageId, r => r.ReactionType);
+
+            _messageReactions = reactions;
+        }
+        catch
+        {
+            // Silent fail - reactions are non-critical
+            _messageReactions = new Dictionary<Guid, string>();
+        }
     }
 }

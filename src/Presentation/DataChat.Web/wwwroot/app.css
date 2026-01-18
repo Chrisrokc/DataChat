@@ -572,6 +572,8 @@ fluent-card {
     --card-background-color: rgba(255, 255, 255, 0.85);
     border-radius: 12px !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+    height: auto !important;
+    align-self: flex-start;
 }
 
 fluent-button[appearance="accent"] {

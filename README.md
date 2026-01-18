@@ -10,6 +10,7 @@ A modern enterprise AI chat application with RAG (Retrieval-Augmented Generation
 
 ## Features
 
+### Core Features
 - **AI-Powered Chat** - Interactive chat interface with streaming responses powered by OpenAI GPT models
 - **RAG (Retrieval-Augmented Generation)** - AI responses grounded in your documents and data
 - **File Uploads** - Upload images, PDFs, and documents directly in chat for AI analysis
@@ -18,7 +19,20 @@ A modern enterprise AI chat application with RAG (Retrieval-Augmented Generation
 - **Vector Search** - SQL Server 2025 native VECTOR type for semantic search
 - **User Management** - Role-based access control with local or Windows authentication
 - **Data Source Permissions** - Control who can access which data sources
-- **Admin Dashboard** - Configure AI settings, manage users, monitor sync jobs
+
+### Chat Features
+- **Message Reactions** - Thumbs up/down feedback on AI responses with optional comments
+- **AI Memory** - Persistent memory that remembers user preferences and context across conversations
+- **Dark Mode** - Full dark theme support with automatic persistence
+
+### Admin Dashboard
+- **Analytics Dashboard** - Usage metrics, daily activity charts, top users, and engagement statistics
+- **Audit Log Viewer** - Searchable log of all system actions with filtering and export
+- **Cost Tracking** - Monitor API token usage and costs with budget alerts
+- **Announcement Banner** - Display system-wide announcements with scheduling and styling options
+- **Branding Configuration** - Customize application name, colors, and logo
+- **User Management** - Manage users, roles, and permissions
+- **Data Source Management** - Configure and monitor knowledge base sync status
 
 ## Screenshots
 

@@ -4,6 +4,7 @@ using DataChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DataChat.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260117233646_AddChatFolders")]
+    partial class AddChatFolders
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -325,12 +328,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                     b.Property<string>("DataSourcesUsed")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("InputTokens")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("OutputTokens")
-                        .HasColumnType("int");
-
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -600,61 +597,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                     b.ToTable("FileSystemDataSources", (string)null);
                 });
 
-            modelBuilder.Entity("DataChat.Domain.Entities.MessageReaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("FeedbackCategory")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("FeedbackText")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<Guid>("MessageId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ReactionType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("MessageId");
-
-                    b.HasIndex("ReactionType");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("MessageId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("MessageReactions", (string)null);
-                });
-
             modelBuilder.Entity("DataChat.Domain.Entities.Role", b =>
                 {
                     b.Property<int>("Id")
@@ -771,50 +713,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<bool>("AnnouncementDismissible")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("AnnouncementEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("AnnouncementEndDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AnnouncementMessage")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTime?>("AnnouncementStartDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AnnouncementType")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("info");
-
-                    b.Property<bool>("CostAlertEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("CostAlertThreshold")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)")
-                        .HasDefaultValue(80m);
-
-                    b.Property<decimal>("CostPerInputToken")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 10)
-                        .HasColumnType("decimal(18,10)")
-                        .HasDefaultValue(0.00001m);
-
-                    b.Property<decimal>("CostPerOutputToken")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 10)
-                        .HasColumnType("decimal(18,10)")
-                        .HasDefaultValue(0.00003m);
-
                     b.Property<string>("EmbeddingModel")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -824,12 +722,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("MaxTokensPerRequest")
                         .HasColumnType("int");
-
-                    b.Property<decimal>("MonthlyCostBudget")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasDefaultValue(0m);
 
                     b.Property<string>("OpenAiApiKey")
                         .HasMaxLength(500)
@@ -891,16 +783,8 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         {
                             Id = 1,
                             AiAssistantName = "Assistant",
-                            AnnouncementDismissible = true,
-                            AnnouncementEnabled = false,
-                            AnnouncementType = "info",
-                            CostAlertEnabled = false,
-                            CostAlertThreshold = 80m,
-                            CostPerInputToken = 0.00001m,
-                            CostPerOutputToken = 0.00003m,
                             EmbeddingModel = "text-embedding-ada-002",
                             MaxTokensPerRequest = 4096,
-                            MonthlyCostBudget = 0m,
                             OpenAiModel = "gpt-4o",
                             SqlServerConnectionTimeout = 30,
                             SqlServerPort = 1433,
@@ -1212,7 +1096,7 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                     b.HasOne("DataChat.Domain.Entities.User", "User")
                         .WithMany("ChatFolders")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("User");
@@ -1260,25 +1144,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("DataSource");
-                });
-
-            modelBuilder.Entity("DataChat.Domain.Entities.MessageReaction", b =>
-                {
-                    b.HasOne("DataChat.Domain.Entities.ChatMessage", "Message")
-                        .WithMany("Reactions")
-                        .HasForeignKey("MessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("DataChat.Domain.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Message");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("DataChat.Domain.Entities.SqlViewDataSource", b =>
@@ -1356,11 +1221,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DataChat.Domain.Entities.ChatFolder", b =>
                 {
                     b.Navigation("Chats");
-                });
-
-            modelBuilder.Entity("DataChat.Domain.Entities.ChatMessage", b =>
-                {
-                    b.Navigation("Reactions");
                 });
 
             modelBuilder.Entity("DataChat.Domain.Entities.DataSource", b =>

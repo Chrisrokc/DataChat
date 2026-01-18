@@ -1,0 +1,362 @@
+@page "/memory"
+@attribute [Authorize]
+@using DataChat.Domain.Entities
+@inject IApplicationDbContext DbContext
+@inject ICurrentUserService CurrentUser
+@inject IDateTimeService DateTimeService
+@inject IToastService ToastService
+
+<PageTitle>Memory & Preferences</PageTitle>
+
+<div style="max-width: 800px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div>
+            <h4 style="margin: 0;">Memory & Preferences</h4>
+            <p style="color: #666; margin: 8px 0 0 0; font-size: 14px;">
+                Add things you want the AI to remember about you across all conversations.
+            </p>
+        </div>
+        <FluentButton Appearance="Appearance.Accent" OnClick="ShowAddDialog">Add Memory</FluentButton>
+    </div>
+
+    @if (_isLoading)
+    {
+        <FluentProgress />
+    }
+    else if (!_memories.Any())
+    {
+        <FluentCard Style="padding: 48px; text-align: center;">
+            <div style="margin-bottom: 16px;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="#ccc">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+            </div>
+            <h5 style="margin: 0 0 8px 0; color: #666;">No memories yet</h5>
+            <p style="color: #888; margin: 0 0 24px 0;">
+                Add preferences, facts, or instructions for the AI to remember about you.
+            </p>
+            <FluentButton Appearance="Appearance.Accent" OnClick="ShowAddDialog">Add Your First Memory</FluentButton>
+        </FluentCard>
+    }
+    else
+    {
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            @foreach (var category in _memories.GroupBy(m => m.Category).OrderBy(g => GetCategoryOrder(g.Key)))
+            {
+                <FluentCard Style="padding: 16px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <FluentBadge BackgroundColor="@GetCategoryColor(category.Key)" Color="white">
+                            @GetCategoryDisplayName(category.Key)
+                        </FluentBadge>
+                        <span style="font-size: 12px; color: #888;">@category.Count() items</span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        @foreach (var memory in category.OrderByDescending(m => m.Priority))
+                        {
+                            <div class="memory-item" style="display: flex; align-items: flex-start; justify-content: space-between; padding: 12px; background: var(--neutral-layer-2); border-radius: 8px; @(!memory.IsActive ? "opacity: 0.5;" : "")">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style="font-size: 14px;">@memory.Content</span>
+                                        @if (memory.Priority > 0)
+                                        {
+                                            <FluentBadge BackgroundColor="#ffb900" Color="white" Style="font-size: 10px;">High Priority</FluentBadge>
+                                        }
+                                        @if (!memory.IsActive)
+                                        {
+                                            <FluentBadge BackgroundColor="#888" Color="white" Style="font-size: 10px;">Disabled</FluentBadge>
+                                        }
+                                    </div>
+                                    <div style="font-size: 11px; color: #888; margin-top: 4px;">
+                                        Added @FormatTimeAgo(memory.CreatedAt)
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                    <FluentButton Appearance="Appearance.Stealth" OnClick="() => ToggleMemory(memory)" Title="@(memory.IsActive ? "Disable" : "Enable")">
+                                        @if (memory.IsActive)
+                                        {
+                                            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM3 10a7 7 0 1114 0 7 7 0 01-14 0z"/><path d="M10 6a4 4 0 100 8 4 4 0 000-8z"/></svg>
+                                        }
+                                        else
+                                        {
+                                            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM3 10a7 7 0 1114 0 7 7 0 01-14 0z"/></svg>
+                                        }
+                                    </FluentButton>
+                                    <FluentButton Appearance="Appearance.Stealth" OnClick="() => EditMemory(memory)" Title="Edit">
+                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M14.846 1.403a2.45 2.45 0 013.465 3.465l-9.193 9.192a1.5 1.5 0 01-.536.335l-4.5 1.5a.75.75 0 01-.949-.949l1.5-4.5a1.5 1.5 0 01.335-.536l9.193-9.192a.75.75 0 01.685.685z"/></svg>
+                                    </FluentButton>
+                                    <FluentButton Appearance="Appearance.Stealth" OnClick="() => DeleteMemory(memory)" Title="Delete">
+                                        <svg width="16" height="16" viewBox="0 0 20 20" fill="#d13438"><path d="M8.5 4h3a1.5 1.5 0 00-3 0zm-1 0a2.5 2.5 0 015 0h5a.5.5 0 010 1h-1.054l-1.194 10.344A3 3 0 0112.272 18H7.728a3 3 0 01-2.98-2.656L3.554 5H2.5a.5.5 0 010-1h5z"/></svg>
+                                    </FluentButton>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </FluentCard>
+            }
+        </div>
+
+        <div style="margin-top: 24px; padding: 16px; background: var(--neutral-layer-2); border-radius: 8px;">
+            <h6 style="margin: 0 0 8px 0;">Tips for effective memories</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #666; font-size: 13px;">
+                <li>Be specific: "I prefer concise answers" works better than "I like short things"</li>
+                <li>Use preferences for communication style: "Always use bullet points for lists"</li>
+                <li>Add context about your work: "I'm a software developer working with C#"</li>
+                <li>Include instructions: "Always include code examples when explaining concepts"</li>
+            </ul>
+        </div>
+    }
+</div>
+
+@* Add/Edit Memory Dialog *@
+@if (_showDialog)
+{
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;" @onclick="CloseDialog">
+        <FluentCard Style="width: 500px; max-width: 90vw; padding: 24px;" @onclick:stopPropagation="true">
+            <h5 style="margin: 0 0 20px 0;">@(_editingMemory == null ? "Add Memory" : "Edit Memory")</h5>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Category</label>
+                <select @bind="_dialogCategory" style="width: 100%; padding: 10px 12px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; background: var(--neutral-layer-1); font-size: 14px;">
+                    <option value="preference">Preference - How I like responses</option>
+                    <option value="fact">Fact - About me or my work</option>
+                    <option value="instruction">Instruction - Things to always do</option>
+                    <option value="context">Context - Background information</option>
+                    <option value="general">General</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px;">Memory Content</label>
+                <textarea @bind="_dialogContent" placeholder="E.g., I prefer code examples in Python" rows="3" style="width: 100%; padding: 10px 12px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; font-size: 14px; resize: vertical; font-family: inherit;"></textarea>
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <FluentCheckbox @bind-Value="_dialogHighPriority">
+                    High priority (always apply this memory)
+                </FluentCheckbox>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <FluentButton Appearance="Appearance.Stealth" OnClick="CloseDialog">Cancel</FluentButton>
+                <FluentButton Appearance="Appearance.Accent" OnClick="SaveMemory" Disabled="@(string.IsNullOrWhiteSpace(_dialogContent) || _isSaving)">
+                    @if (_isSaving)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                    }
+                    @(_editingMemory == null ? "Add Memory" : "Save Changes")
+                </FluentButton>
+            </div>
+        </FluentCard>
+    </div>
+}
+
+<style>
+    .memory-item:hover {
+        background: var(--neutral-layer-3) !important;
+    }
+</style>
+
+@code {
+    private List<UserMemory> _memories = new();
+    private bool _isLoading = true;
+    private bool _showDialog;
+    private bool _isSaving;
+    private bool _isProcessing; // Prevents concurrent operations
+
+    // Dialog state
+    private UserMemory? _editingMemory;
+    private string _dialogCategory = "preference";
+    private string _dialogContent = "";
+    private bool _dialogHighPriority;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMemories();
+    }
+
+    private async Task LoadMemories()
+    {
+        try
+        {
+            _isLoading = true;
+            var userId = CurrentUser.UserId;
+            if (userId != null)
+            {
+                _memories = await DbContext.UserMemories
+                    .Where(m => m.UserId == userId.Value)
+                    .OrderByDescending(m => m.Priority)
+                    .ThenByDescending(m => m.CreatedAt)
+                    .ToListAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load memories: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowAddDialog()
+    {
+        _editingMemory = null;
+        _dialogCategory = "preference";
+        _dialogContent = "";
+        _dialogHighPriority = false;
+        _showDialog = true;
+    }
+
+    private void EditMemory(UserMemory memory)
+    {
+        _editingMemory = memory;
+        _dialogCategory = memory.Category;
+        _dialogContent = memory.Content;
+        _dialogHighPriority = memory.Priority > 0;
+        _showDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        _showDialog = false;
+        _editingMemory = null;
+    }
+
+    private async Task SaveMemory()
+    {
+        if (string.IsNullOrWhiteSpace(_dialogContent)) return;
+
+        var userId = CurrentUser.UserId;
+        if (userId == null)
+        {
+            ToastService.ShowError("User not authenticated");
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            if (_editingMemory != null)
+            {
+                // Update existing
+                _editingMemory.Category = _dialogCategory;
+                _editingMemory.Content = _dialogContent.Trim();
+                _editingMemory.Priority = _dialogHighPriority ? 1 : 0;
+                _editingMemory.UpdatedAt = DateTimeService.UtcNow;
+            }
+            else
+            {
+                // Add new
+                var memory = new UserMemory
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId.Value,
+                    Category = _dialogCategory,
+                    Content = _dialogContent.Trim(),
+                    Priority = _dialogHighPriority ? 1 : 0,
+                    IsActive = true,
+                    CreatedAt = DateTimeService.UtcNow
+                };
+                DbContext.UserMemories.Add(memory);
+            }
+
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess(_editingMemory != null ? "Memory updated" : "Memory added");
+            CloseDialog();
+            await LoadMemories();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ToggleMemory(UserMemory memory)
+    {
+        if (_isProcessing) return;
+        _isProcessing = true;
+
+        try
+        {
+            memory.IsActive = !memory.IsActive;
+            memory.UpdatedAt = DateTimeService.UtcNow;
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowInfo(memory.IsActive ? "Memory enabled" : "Memory disabled");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to toggle: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private async Task DeleteMemory(UserMemory memory)
+    {
+        if (_isProcessing) return;
+        _isProcessing = true;
+
+        try
+        {
+            DbContext.UserMemories.Remove(memory);
+            await DbContext.SaveChangesAsync();
+            _memories.Remove(memory);
+            ToastService.ShowSuccess("Memory deleted");
+        }
+        catch (Exception ex)
+        {
+            // Reload to get fresh state if there was a concurrency issue
+            await LoadMemories();
+            ToastService.ShowError($"Failed to delete: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private string GetCategoryDisplayName(string category) => category switch
+    {
+        "preference" => "Preferences",
+        "fact" => "Facts",
+        "instruction" => "Instructions",
+        "context" => "Context",
+        _ => "General"
+    };
+
+    private string GetCategoryColor(string category) => category switch
+    {
+        "preference" => "#0078d4",
+        "fact" => "#5c2d91",
+        "instruction" => "#107c10",
+        "context" => "#ffb900",
+        _ => "#888"
+    };
+
+    private int GetCategoryOrder(string category) => category switch
+    {
+        "instruction" => 0,
+        "preference" => 1,
+        "fact" => 2,
+        "context" => 3,
+        _ => 4
+    };
+
+    private string FormatTimeAgo(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+        if (diff.TotalMinutes < 1) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return dateTime.ToString("MMM d, yyyy");
+    }
+}

@@ -1,0 +1,618 @@
+@page "/admin/analytics"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IDbContextFactory<DataChat.Infrastructure.Persistence.ApplicationDbContext> DbContextFactory
+@inject IToastService ToastService
+@inject ILogger<Analytics> Logger
+@implements IDisposable
+
+<PageTitle>Analytics Dashboard</PageTitle>
+
+<h4 style="margin-bottom: 24px;">Usage Analytics</h4>
+
+@if (_isLoading)
+{
+    <FluentProgress />
+}
+else
+{
+    @* Key Metrics Cards *@
+    <FluentGrid Spacing="4" Style="margin-bottom: 24px;">
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="metric-card">
+                <div class="metric-icon" style="background: linear-gradient(135deg, #0078d4, #106ebe);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+                <div class="metric-content">
+                    <div class="metric-value">@_metrics.TotalChats.ToString("N0")</div>
+                    <div class="metric-label">Total Conversations</div>
+                </div>
+            </div>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="metric-card">
+                <div class="metric-icon" style="background: linear-gradient(135deg, #107c10, #0b5c0b);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                    </svg>
+                </div>
+                <div class="metric-content">
+                    <div class="metric-value">@_metrics.TotalMessages.ToString("N0")</div>
+                    <div class="metric-label">Total Messages</div>
+                </div>
+            </div>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="metric-card">
+                <div class="metric-icon" style="background: linear-gradient(135deg, #5c2d91, #8661c5);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                    </svg>
+                </div>
+                <div class="metric-content">
+                    <div class="metric-value">@_metrics.TotalUsers.ToString("N0")</div>
+                    <div class="metric-label">Total Users</div>
+                </div>
+            </div>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="metric-card">
+                <div class="metric-icon" style="background: linear-gradient(135deg, #ffb900, #eb9800);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                    </svg>
+                </div>
+                <div class="metric-content">
+                    <div class="metric-value">@FormatTokens(_metrics.TotalTokens)</div>
+                    <div class="metric-label">Tokens Used</div>
+                </div>
+            </div>
+        </FluentGridItem>
+    </FluentGrid>
+
+    @* Activity This Period *@
+    <FluentGrid Spacing="4" Style="margin-bottom: 24px;">
+        <FluentGridItem xs="12" md="6">
+            <FluentCard Style="padding: 20px; height: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h6 style="margin: 0;">Activity Overview</h6>
+                    <select @bind="_selectedPeriod" @bind:after="LoadData" style="padding: 6px 12px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; background: var(--neutral-layer-1);">
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                    </select>
+                </div>
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value" style="color: #0078d4;">@_metrics.ChatsThisPeriod.ToString("N0")</div>
+                            <div class="stat-label">New Conversations</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value" style="color: #107c10;">@_metrics.MessagesThisPeriod.ToString("N0")</div>
+                            <div class="stat-label">Messages Sent</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value" style="color: #5c2d91;">@_metrics.ActiveUsersThisPeriod.ToString("N0")</div>
+                            <div class="stat-label">Active Users</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value" style="color: #ffb900;">@FormatTokens(_metrics.TokensThisPeriod)</div>
+                            <div class="stat-label">Tokens Used</div>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+            </FluentCard>
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" md="6">
+            <FluentCard Style="padding: 20px; height: 100%;">
+                <h6 style="margin-bottom: 16px;">User Engagement</h6>
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value">@_metrics.AvgMessagesPerChat.ToString("F1")</div>
+                            <div class="stat-label">Avg Messages/Chat</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value">@_metrics.AvgChatsPerUser.ToString("F1")</div>
+                            <div class="stat-label">Avg Chats/User</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value">@FormatTokens(_metrics.AvgTokensPerMessage)</div>
+                            <div class="stat-label">Avg Tokens/Message</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value">@_metrics.UsersWithChats.ToString("N0")</div>
+                            <div class="stat-label">Users with Chats</div>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+            </FluentCard>
+        </FluentGridItem>
+    </FluentGrid>
+
+    @* Daily Activity Chart (Simple Bar Visualization) *@
+    <FluentCard Style="padding: 20px; margin-bottom: 24px;">
+        <h6 style="margin-bottom: 16px;">Daily Message Activity (Last @_selectedPeriod Days)</h6>
+        @if (_dailyActivity.Any())
+        {
+            <div class="chart-container">
+                @{
+                    var maxMessages = _dailyActivity.Max(d => d.MessageCount);
+                    maxMessages = maxMessages == 0 ? 1 : maxMessages;
+                }
+                @foreach (var day in _dailyActivity)
+                {
+                    var height = (int)((double)day.MessageCount / maxMessages * 100);
+                    var isToday = day.Date.Date == DateTime.Today;
+                    <div class="chart-bar-container" title="@day.Date.ToString("MMM d"): @day.MessageCount messages">
+                        <div class="chart-bar" style="height: @(height)%; background: @(isToday ? "#0078d4" : "#a0a0a0");"></div>
+                        <div class="chart-label">@day.Date.ToString("dd")</div>
+                    </div>
+                }
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: #888;">
+                <span>@_dailyActivity.First().Date.ToString("MMM d")</span>
+                <span>@_dailyActivity.Last().Date.ToString("MMM d")</span>
+            </div>
+        }
+        else
+        {
+            <div style="text-align: center; padding: 40px; color: #888;">No activity data available</div>
+        }
+    </FluentCard>
+
+    @* Top Users and Recent Activity *@
+    <FluentGrid Spacing="4">
+        <FluentGridItem xs="12" md="6">
+            <FluentCard Style="padding: 20px;">
+                <h6 style="margin-bottom: 16px;">Top Users by Messages</h6>
+                @if (_topUsers.Any())
+                {
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--neutral-stroke-rest);">
+                                <th style="text-align: left; padding: 8px;">User</th>
+                                <th style="text-align: right; padding: 8px;">Chats</th>
+                                <th style="text-align: right; padding: 8px;">Messages</th>
+                                <th style="text-align: right; padding: 8px;">Tokens</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in _topUsers)
+                            {
+                                <tr style="border-bottom: 1px solid var(--neutral-stroke-rest);">
+                                    <td style="padding: 10px 8px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 12px;">
+                                                @(user.DisplayName?.Substring(0, 1).ToUpper() ?? "U")
+                                            </div>
+                                            <span>@user.DisplayName</span>
+                                        </div>
+                                    </td>
+                                    <td style="text-align: right; padding: 8px;">@user.ChatCount.ToString("N0")</td>
+                                    <td style="text-align: right; padding: 8px;">@user.MessageCount.ToString("N0")</td>
+                                    <td style="text-align: right; padding: 8px;">@FormatTokens(user.TokenCount)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 40px; color: #888;">No user data available</div>
+                }
+            </FluentCard>
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" md="6">
+            <FluentCard Style="padding: 20px;">
+                <h6 style="margin-bottom: 16px;">Recent Conversations</h6>
+                @if (_recentChats.Any())
+                {
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        @foreach (var chat in _recentChats)
+                        {
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 12px; background: var(--neutral-layer-2); border-radius: 8px;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@chat.Title</div>
+                                    <div style="font-size: 12px; color: #888; margin-top: 4px;">
+                                        @chat.UserName &bull; @chat.MessageCount messages
+                                    </div>
+                                </div>
+                                <div style="font-size: 12px; color: #888; white-space: nowrap; margin-left: 12px;">
+                                    @FormatTimeAgo(chat.LastActivity)
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 40px; color: #888;">No recent conversations</div>
+                }
+            </FluentCard>
+        </FluentGridItem>
+    </FluentGrid>
+
+    @* Data Sources Usage *@
+    <FluentCard Style="padding: 20px; margin-top: 24px;">
+        <h6 style="margin-bottom: 16px;">Knowledge Base Statistics</h6>
+        <FluentGrid Spacing="3">
+            <FluentGridItem xs="6" sm="3">
+                <div class="stat-box">
+                    <div class="stat-value">@_metrics.TotalDataSources.ToString("N0")</div>
+                    <div class="stat-label">Data Sources</div>
+                </div>
+            </FluentGridItem>
+            <FluentGridItem xs="6" sm="3">
+                <div class="stat-box">
+                    <div class="stat-value">@_metrics.TotalDocuments.ToString("N0")</div>
+                    <div class="stat-label">Documents Indexed</div>
+                </div>
+            </FluentGridItem>
+            <FluentGridItem xs="6" sm="3">
+                <div class="stat-box">
+                    <div class="stat-value">@_metrics.TotalChunks.ToString("N0")</div>
+                    <div class="stat-label">Vector Embeddings</div>
+                </div>
+            </FluentGridItem>
+            <FluentGridItem xs="6" sm="3">
+                <div class="stat-box">
+                    <div class="stat-value">@_metrics.FailedDocuments.ToString("N0")</div>
+                    <div class="stat-label" style="color: @(_metrics.FailedDocuments > 0 ? "#d13438" : "inherit");">Failed Documents</div>
+                </div>
+            </FluentGridItem>
+        </FluentGrid>
+    </FluentCard>
+}
+
+<style>
+    .metric-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        background: var(--neutral-layer-1);
+        border: 1px solid var(--neutral-stroke-rest);
+        border-radius: 12px;
+        height: 100%;
+    }
+
+    .metric-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .metric-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .metric-value {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .metric-label {
+        font-size: 13px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    .stat-box {
+        padding: 16px;
+        background: var(--neutral-layer-2);
+        border-radius: 8px;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    .chart-container {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 120px;
+        padding: 0 4px;
+    }
+
+    .chart-bar-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100%;
+    }
+
+    .chart-bar {
+        width: 100%;
+        max-width: 20px;
+        border-radius: 2px 2px 0 0;
+        transition: height 0.3s ease;
+        margin-top: auto;
+        min-height: 2px;
+    }
+
+    .chart-label {
+        font-size: 9px;
+        color: #888;
+        margin-top: 4px;
+    }
+</style>
+
+@code {
+    private AnalyticsMetrics _metrics = new();
+    private List<DailyActivity> _dailyActivity = new();
+    private List<TopUser> _topUsers = new();
+    private List<RecentChat> _recentChats = new();
+    private bool _isLoading = true;
+    private int _selectedPeriod = 30;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        // Auto-refresh every 60 seconds
+        _refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadData();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _isLoading = true;
+            StateHasChanged();
+
+            var periodStart = DateTime.UtcNow.AddDays(-_selectedPeriod);
+
+            // Load all metrics in parallel - each task gets its own DbContext to avoid concurrency issues
+            await Task.WhenAll(
+                LoadCoreMetrics(periodStart),
+                LoadDailyActivity(periodStart),
+                LoadTopUsers(),
+                LoadRecentChats()
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load analytics data");
+            ToastService.ShowError("Failed to load analytics data");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadCoreMetrics(DateTime periodStart)
+    {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+
+        // Total counts
+        _metrics.TotalChats = await dbContext.Chats.CountAsync();
+        _metrics.TotalMessages = await dbContext.ChatMessages.CountAsync();
+        _metrics.TotalUsers = await dbContext.Users.CountAsync();
+
+        // Token usage
+        _metrics.TotalTokens = await dbContext.ChatMessages
+            .Where(m => m.TokenCount.HasValue)
+            .SumAsync(m => m.TokenCount ?? 0);
+
+        // Period-specific counts
+        _metrics.ChatsThisPeriod = await dbContext.Chats
+            .Where(c => c.CreatedAt >= periodStart)
+            .CountAsync();
+
+        _metrics.MessagesThisPeriod = await dbContext.ChatMessages
+            .Where(m => m.CreatedAt >= periodStart)
+            .CountAsync();
+
+        _metrics.TokensThisPeriod = await dbContext.ChatMessages
+            .Where(m => m.CreatedAt >= periodStart && m.TokenCount.HasValue)
+            .SumAsync(m => m.TokenCount ?? 0);
+
+        // Active users (users who sent messages in the period)
+        _metrics.ActiveUsersThisPeriod = await dbContext.Chats
+            .Where(c => c.Messages.Any(m => m.CreatedAt >= periodStart))
+            .Select(c => c.UserId)
+            .Distinct()
+            .CountAsync();
+
+        // Users with at least one chat
+        _metrics.UsersWithChats = await dbContext.Chats
+            .Select(c => c.UserId)
+            .Distinct()
+            .CountAsync();
+
+        // Averages
+        _metrics.AvgMessagesPerChat = _metrics.TotalChats > 0
+            ? (double)_metrics.TotalMessages / _metrics.TotalChats
+            : 0;
+
+        _metrics.AvgChatsPerUser = _metrics.UsersWithChats > 0
+            ? (double)_metrics.TotalChats / _metrics.UsersWithChats
+            : 0;
+
+        _metrics.AvgTokensPerMessage = _metrics.TotalMessages > 0
+            ? _metrics.TotalTokens / _metrics.TotalMessages
+            : 0;
+
+        // Knowledge base stats
+        _metrics.TotalDataSources = await dbContext.DataSources.Where(ds => ds.IsActive).CountAsync();
+        _metrics.TotalDocuments = await dbContext.Documents.Where(d => d.Status == DocumentStatus.Indexed).CountAsync();
+        _metrics.TotalChunks = await dbContext.DocumentChunks.CountAsync();
+        _metrics.FailedDocuments = await dbContext.Documents.Where(d => d.Status == DocumentStatus.Failed).CountAsync();
+    }
+
+    private async Task LoadDailyActivity(DateTime periodStart)
+    {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+
+        var messages = await dbContext.ChatMessages
+            .Where(m => m.CreatedAt >= periodStart)
+            .GroupBy(m => m.CreatedAt.Date)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        // Fill in all days (including zeros)
+        _dailyActivity = Enumerable.Range(0, _selectedPeriod)
+            .Select(i => periodStart.AddDays(i).Date)
+            .Select(date => new DailyActivity
+            {
+                Date = date,
+                MessageCount = messages.FirstOrDefault(m => m.Date == date)?.Count ?? 0
+            })
+            .ToList();
+    }
+
+    private async Task LoadTopUsers()
+    {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+
+        _topUsers = await dbContext.Chats
+            .GroupBy(c => new { c.UserId, c.User!.DisplayName })
+            .Select(g => new TopUser
+            {
+                UserId = g.Key.UserId,
+                DisplayName = g.Key.DisplayName ?? "Unknown",
+                ChatCount = g.Count(),
+                MessageCount = g.Sum(c => c.Messages.Count),
+                TokenCount = g.Sum(c => c.Messages.Where(m => m.TokenCount.HasValue).Sum(m => m.TokenCount ?? 0))
+            })
+            .OrderByDescending(u => u.MessageCount)
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private async Task LoadRecentChats()
+    {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+
+        _recentChats = await dbContext.Chats
+            .Include(c => c.User)
+            .Include(c => c.Messages)
+            .OrderByDescending(c => c.UpdatedAt ?? c.CreatedAt)
+            .Take(8)
+            .Select(c => new RecentChat
+            {
+                Id = c.Id,
+                Title = c.Title,
+                UserName = c.User != null ? c.User.DisplayName ?? c.User.Username : "Unknown",
+                MessageCount = c.Messages.Count,
+                LastActivity = c.UpdatedAt ?? c.CreatedAt
+            })
+            .ToListAsync();
+    }
+
+    private string FormatTokens(long tokens)
+    {
+        if (tokens >= 1_000_000)
+            return $"{tokens / 1_000_000.0:F1}M";
+        if (tokens >= 1_000)
+            return $"{tokens / 1_000.0:F1}K";
+        return tokens.ToString("N0");
+    }
+
+    private string FormatTimeAgo(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+        if (diff.TotalMinutes < 1)
+            return "Just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+        return dateTime.ToString("MMM d");
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private class AnalyticsMetrics
+    {
+        public int TotalChats { get; set; }
+        public int TotalMessages { get; set; }
+        public int TotalUsers { get; set; }
+        public long TotalTokens { get; set; }
+        public int ChatsThisPeriod { get; set; }
+        public int MessagesThisPeriod { get; set; }
+        public long TokensThisPeriod { get; set; }
+        public int ActiveUsersThisPeriod { get; set; }
+        public int UsersWithChats { get; set; }
+        public double AvgMessagesPerChat { get; set; }
+        public double AvgChatsPerUser { get; set; }
+        public long AvgTokensPerMessage { get; set; }
+        public int TotalDataSources { get; set; }
+        public int TotalDocuments { get; set; }
+        public int TotalChunks { get; set; }
+        public int FailedDocuments { get; set; }
+    }
+
+    private class DailyActivity
+    {
+        public DateTime Date { get; set; }
+        public int MessageCount { get; set; }
+    }
+
+    private class TopUser
+    {
+        public Guid UserId { get; set; }
+        public string DisplayName { get; set; } = "";
+        public int ChatCount { get; set; }
+        public int MessageCount { get; set; }
+        public long TokenCount { get; set; }
+    }
+
+    private class RecentChat
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string UserName { get; set; } = "";
+        public int MessageCount { get; set; }
+        public DateTime LastActivity { get; set; }
+    }
+}

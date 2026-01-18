@@ -16,5 +16,7 @@ public class User : AuditableEntity
     // Navigation properties
     public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
     public virtual ICollection<Chat> Chats { get; set; } = new List<Chat>();
+    public virtual ICollection<ChatFolder> ChatFolders { get; set; } = new List<ChatFolder>();
     public virtual ICollection<UserDataSourcePermission> DataSourcePermissions { get; set; } = new List<UserDataSourcePermission>();
+    public virtual ICollection<UserMemory> Memories { get; set; } = new List<UserMemory>();
 }

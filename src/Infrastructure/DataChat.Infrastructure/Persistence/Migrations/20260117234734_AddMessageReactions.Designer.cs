@@ -4,6 +4,7 @@ using DataChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DataChat.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260117234734_AddMessageReactions")]
+    partial class AddMessageReactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -324,12 +327,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("DataSourcesUsed")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("InputTokens")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("OutputTokens")
-                        .HasColumnType("int");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -771,50 +768,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<bool>("AnnouncementDismissible")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("AnnouncementEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("AnnouncementEndDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AnnouncementMessage")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTime?>("AnnouncementStartDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AnnouncementType")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("info");
-
-                    b.Property<bool>("CostAlertEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("CostAlertThreshold")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)")
-                        .HasDefaultValue(80m);
-
-                    b.Property<decimal>("CostPerInputToken")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 10)
-                        .HasColumnType("decimal(18,10)")
-                        .HasDefaultValue(0.00001m);
-
-                    b.Property<decimal>("CostPerOutputToken")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 10)
-                        .HasColumnType("decimal(18,10)")
-                        .HasDefaultValue(0.00003m);
-
                     b.Property<string>("EmbeddingModel")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -824,12 +777,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("MaxTokensPerRequest")
                         .HasColumnType("int");
-
-                    b.Property<decimal>("MonthlyCostBudget")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasDefaultValue(0m);
 
                     b.Property<string>("OpenAiApiKey")
                         .HasMaxLength(500)
@@ -891,16 +838,8 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         {
                             Id = 1,
                             AiAssistantName = "Assistant",
-                            AnnouncementDismissible = true,
-                            AnnouncementEnabled = false,
-                            AnnouncementType = "info",
-                            CostAlertEnabled = false,
-                            CostAlertThreshold = 80m,
-                            CostPerInputToken = 0.00001m,
-                            CostPerOutputToken = 0.00003m,
                             EmbeddingModel = "text-embedding-ada-002",
                             MaxTokensPerRequest = 4096,
-                            MonthlyCostBudget = 0m,
                             OpenAiModel = "gpt-4o",
                             SqlServerConnectionTimeout = 30,
                             SqlServerPort = 1433,

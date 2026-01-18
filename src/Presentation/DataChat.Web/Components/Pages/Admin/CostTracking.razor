@@ -1,0 +1,601 @@
+@page "/admin/cost-tracking"
+@attribute [Authorize(Policy = "AdminOnly")]
+@inject IApplicationDbContext DbContext
+@inject ICurrentUserService CurrentUser
+@inject IToastService ToastService
+@inject IDateTimeService DateTimeService
+@implements IDisposable
+
+<PageTitle>Cost Tracking</PageTitle>
+
+<h4 style="margin-bottom: 24px;">Cost Tracking & Budget Management</h4>
+
+@if (_isLoading)
+{
+    <FluentProgress />
+}
+else
+{
+    @* Overview Cards *@
+    <FluentGrid Spacing="4" Style="margin-bottom: 24px;">
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="cost-card">
+                <div class="cost-icon" style="background: linear-gradient(135deg, #107c10, #0b5c0b);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z"/>
+                    </svg>
+                </div>
+                <div class="cost-content">
+                    <div class="cost-value">@FormatCost(_metrics.CurrentMonthCost)</div>
+                    <div class="cost-label">This Month</div>
+                </div>
+            </div>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="cost-card">
+                <div class="cost-icon" style="background: linear-gradient(135deg, #0078d4, #106ebe);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                    </svg>
+                </div>
+                <div class="cost-content">
+                    <div class="cost-value">@FormatCost(_metrics.TotalCost)</div>
+                    <div class="cost-label">All Time</div>
+                </div>
+            </div>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="cost-card">
+                <div class="cost-icon" style="background: linear-gradient(135deg, #5c2d91, #8661c5);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/>
+                    </svg>
+                </div>
+                <div class="cost-content">
+                    <div class="cost-value">@FormatCost(_metrics.DailyAverage)</div>
+                    <div class="cost-label">Daily Average</div>
+                </div>
+            </div>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <div class="cost-card @(_metrics.BudgetPercentage > 80 ? "warning" : "")">
+                <div class="cost-icon" style="background: linear-gradient(135deg, @(_metrics.BudgetPercentage > 80 ? "#d13438" : "#ffb900"), @(_metrics.BudgetPercentage > 80 ? "#a4262c" : "#eb9800"));">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+                <div class="cost-content">
+                    @if (_config.MonthlyCostBudget > 0)
+                    {
+                        <div class="cost-value">@_metrics.BudgetPercentage.ToString("F0")%</div>
+                        <div class="cost-label">of @FormatCost(_config.MonthlyCostBudget) Budget</div>
+                    }
+                    else
+                    {
+                        <div class="cost-value">No Budget</div>
+                        <div class="cost-label">Set below</div>
+                    }
+                </div>
+            </div>
+        </FluentGridItem>
+    </FluentGrid>
+
+    @* Budget Progress Bar *@
+    @if (_config.MonthlyCostBudget > 0)
+    {
+        <FluentCard Style="padding: 20px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h6 style="margin: 0;">Monthly Budget Progress</h6>
+                <span style="font-size: 14px; color: #666;">
+                    @FormatCost(_metrics.CurrentMonthCost) / @FormatCost(_config.MonthlyCostBudget)
+                </span>
+            </div>
+            <div style="background: var(--neutral-layer-3); border-radius: 8px; height: 24px; overflow: hidden;">
+                <div style="width: @Math.Min(_metrics.BudgetPercentage, 100)%; height: 100%; background: @GetBudgetColor(_metrics.BudgetPercentage); transition: width 0.3s ease;"></div>
+            </div>
+            @if (_metrics.BudgetPercentage > 80)
+            {
+                <div style="margin-top: 8px; padding: 8px 12px; background: rgba(209, 52, 56, 0.1); border-radius: 6px; color: #d13438; font-size: 13px;">
+                    Warning: You have used @_metrics.BudgetPercentage.ToString("F0")% of your monthly budget.
+                </div>
+            }
+        </FluentCard>
+    }
+
+    <FluentGrid Spacing="4" Style="margin-bottom: 24px;">
+        @* Token Usage Breakdown *@
+        <FluentGridItem xs="12" md="6">
+            <FluentCard Style="padding: 20px; height: 100%;">
+                <h6 style="margin-bottom: 16px;">Token Usage (This Month)</h6>
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value" style="color: #0078d4;">@FormatNumber(_metrics.InputTokensThisMonth)</div>
+                            <div class="stat-label">Input Tokens</div>
+                            <div class="stat-cost">@FormatCost(_metrics.InputCostThisMonth)</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value" style="color: #107c10;">@FormatNumber(_metrics.OutputTokensThisMonth)</div>
+                            <div class="stat-label">Output Tokens</div>
+                            <div class="stat-cost">@FormatCost(_metrics.OutputCostThisMonth)</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value">@FormatNumber(_metrics.TotalTokensThisMonth)</div>
+                            <div class="stat-label">Total Tokens</div>
+                        </div>
+                    </FluentGridItem>
+                    <FluentGridItem xs="6">
+                        <div class="stat-box">
+                            <div class="stat-value">@_metrics.RequestsThisMonth.ToString("N0")</div>
+                            <div class="stat-label">API Requests</div>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+            </FluentCard>
+        </FluentGridItem>
+
+        @* Cost by User *@
+        <FluentGridItem xs="12" md="6">
+            <FluentCard Style="padding: 20px; height: 100%;">
+                <h6 style="margin-bottom: 16px;">Top Users by Cost (This Month)</h6>
+                @if (_topUsersByCost.Any())
+                {
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        @foreach (var user in _topUsersByCost)
+                        {
+                            var percentage = _metrics.CurrentMonthCost > 0 ? (user.Cost / _metrics.CurrentMonthCost * 100) : 0;
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 11px; flex-shrink: 0;">
+                                    @(user.DisplayName?.Substring(0, 1).ToUpper() ?? "?")
+                                </div>
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@user.DisplayName</span>
+                                        <span style="font-size: 13px; font-weight: 600;">@FormatCost(user.Cost)</span>
+                                    </div>
+                                    <div style="background: var(--neutral-layer-3); border-radius: 4px; height: 6px; overflow: hidden;">
+                                        <div style="width: @percentage%; height: 100%; background: #0078d4;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 40px; color: #888;">No usage data this month</div>
+                }
+            </FluentCard>
+        </FluentGridItem>
+    </FluentGrid>
+
+    @* Daily Cost Chart *@
+    <FluentCard Style="padding: 20px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h6 style="margin: 0;">Daily Cost (Last 30 Days)</h6>
+            <span style="font-size: 13px; color: #666;">Total: @FormatCost(_dailyCosts.Sum(d => d.Cost))</span>
+        </div>
+        @if (_dailyCosts.Any())
+        {
+            <div class="chart-container">
+                @{
+                    var maxCost = _dailyCosts.Max(d => d.Cost);
+                    maxCost = maxCost == 0 ? 1 : maxCost;
+                }
+                @foreach (var day in _dailyCosts)
+                {
+                    var height = (int)((double)day.Cost / (double)maxCost * 100);
+                    var isToday = day.Date.Date == DateTime.Today;
+                    <div class="chart-bar-container" title="@day.Date.ToString("MMM d"): @FormatCost(day.Cost)">
+                        <div class="chart-bar" style="height: @Math.Max(height, 2)%; background: @(isToday ? "#0078d4" : "#a0a0a0");"></div>
+                        <div class="chart-label">@day.Date.ToString("dd")</div>
+                    </div>
+                }
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: #888;">
+                <span>@_dailyCosts.First().Date.ToString("MMM d")</span>
+                <span>@_dailyCosts.Last().Date.ToString("MMM d")</span>
+            </div>
+        }
+        else
+        {
+            <div style="text-align: center; padding: 40px; color: #888;">No cost data available</div>
+        }
+    </FluentCard>
+
+    @* Settings *@
+    <FluentCard Style="padding: 20px;">
+        <h6 style="margin-bottom: 20px;">Cost Configuration</h6>
+
+        <FluentGrid Spacing="4">
+            <FluentGridItem xs="12" sm="6" md="3">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Input Token Cost ($)</label>
+                <FluentNumberField @bind-Value="_config.CostPerInputToken" Step="0.000001" Min="0" Style="width: 100%;" />
+                <div style="font-size: 11px; color: #888; margin-top: 4px;">Per token cost for prompts</div>
+            </FluentGridItem>
+            <FluentGridItem xs="12" sm="6" md="3">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Output Token Cost ($)</label>
+                <FluentNumberField @bind-Value="_config.CostPerOutputToken" Step="0.000001" Min="0" Style="width: 100%;" />
+                <div style="font-size: 11px; color: #888; margin-top: 4px;">Per token cost for completions</div>
+            </FluentGridItem>
+            <FluentGridItem xs="12" sm="6" md="3">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Monthly Budget ($)</label>
+                <FluentNumberField @bind-Value="_config.MonthlyCostBudget" Step="1" Min="0" Style="width: 100%;" />
+                <div style="font-size: 11px; color: #888; margin-top: 4px;">0 = No budget limit</div>
+            </FluentGridItem>
+            <FluentGridItem xs="12" sm="6" md="3">
+                <label style="font-size: 12px; font-weight: 500; display: block; margin-bottom: 4px;">Alert Threshold (%)</label>
+                <FluentNumberField @bind-Value="_config.CostAlertThreshold" Step="5" Min="0" Max="100" Style="width: 100%;" />
+                <div style="font-size: 11px; color: #888; margin-top: 4px;">Show warning at this %</div>
+            </FluentGridItem>
+        </FluentGrid>
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 20px;">
+            <FluentCheckbox @bind-Value="_config.CostAlertEnabled" Label="Enable budget alerts" />
+        </div>
+
+        <div style="margin-top: 20px;">
+            <FluentButton Appearance="Appearance.Accent" OnClick="SaveSettings" Disabled="@_isSaving">
+                @if (_isSaving)
+                {
+                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                }
+                Save Settings
+            </FluentButton>
+        </div>
+    </FluentCard>
+}
+
+<style>
+    .cost-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        background: var(--neutral-layer-1);
+        border: 1px solid var(--neutral-stroke-rest);
+        border-radius: 12px;
+        height: 100%;
+    }
+
+    .cost-card.warning {
+        border-color: #d13438;
+        background: rgba(209, 52, 56, 0.05);
+    }
+
+    .cost-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .cost-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .cost-value {
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .cost-label {
+        font-size: 13px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    .stat-box {
+        padding: 16px;
+        background: var(--neutral-layer-2);
+        border-radius: 8px;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    .stat-cost {
+        font-size: 11px;
+        color: #107c10;
+        margin-top: 4px;
+        font-weight: 500;
+    }
+
+    .chart-container {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 120px;
+        padding: 0 4px;
+    }
+
+    .chart-bar-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100%;
+    }
+
+    .chart-bar {
+        width: 100%;
+        max-width: 20px;
+        border-radius: 2px 2px 0 0;
+        transition: height 0.3s ease;
+        margin-top: auto;
+        min-height: 2px;
+    }
+
+    .chart-label {
+        font-size: 9px;
+        color: #888;
+        margin-top: 4px;
+    }
+</style>
+
+@code {
+    private CostMetrics _metrics = new();
+    private List<DailyCost> _dailyCosts = new();
+    private List<UserCost> _topUsersByCost = new();
+    private SystemConfiguration _config = new();
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        // Auto-refresh every 60 seconds
+        _refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadMetrics();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Load configuration
+            _config = await DbContext.SystemConfiguration.FirstOrDefaultAsync() ?? new SystemConfiguration();
+
+            await LoadMetrics();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load cost data: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadMetrics()
+    {
+        var now = DateTime.UtcNow;
+        var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var thirtyDaysAgo = now.AddDays(-30);
+
+        // Get all messages for calculations
+        var allMessages = await DbContext.ChatMessages
+            .Where(m => m.Role == MessageRole.Assistant)
+            .Select(m => new { m.InputTokens, m.OutputTokens, m.TokenCount, m.CreatedAt, m.Chat.UserId })
+            .ToListAsync();
+
+        var thisMonthMessages = allMessages.Where(m => m.CreatedAt >= startOfMonth).ToList();
+
+        // Calculate costs using configuration rates
+        var inputRate = _config.CostPerInputToken;
+        var outputRate = _config.CostPerOutputToken;
+
+        // This month
+        _metrics.InputTokensThisMonth = thisMonthMessages.Sum(m => m.InputTokens ?? 0);
+        _metrics.OutputTokensThisMonth = thisMonthMessages.Sum(m => m.OutputTokens ?? 0);
+        _metrics.TotalTokensThisMonth = _metrics.InputTokensThisMonth + _metrics.OutputTokensThisMonth;
+        _metrics.RequestsThisMonth = thisMonthMessages.Count;
+
+        _metrics.InputCostThisMonth = _metrics.InputTokensThisMonth * inputRate;
+        _metrics.OutputCostThisMonth = _metrics.OutputTokensThisMonth * outputRate;
+        _metrics.CurrentMonthCost = _metrics.InputCostThisMonth + _metrics.OutputCostThisMonth;
+
+        // If no input/output tracking, estimate from TokenCount
+        if (_metrics.TotalTokensThisMonth == 0)
+        {
+            var totalTokens = thisMonthMessages.Sum(m => m.TokenCount ?? 0);
+            // Assume 30% input, 70% output as rough estimate
+            _metrics.InputTokensThisMonth = (int)(totalTokens * 0.3);
+            _metrics.OutputTokensThisMonth = (int)(totalTokens * 0.7);
+            _metrics.TotalTokensThisMonth = totalTokens;
+            _metrics.InputCostThisMonth = _metrics.InputTokensThisMonth * inputRate;
+            _metrics.OutputCostThisMonth = _metrics.OutputTokensThisMonth * outputRate;
+            _metrics.CurrentMonthCost = _metrics.InputCostThisMonth + _metrics.OutputCostThisMonth;
+        }
+
+        // All time
+        var allInputTokens = allMessages.Sum(m => m.InputTokens ?? 0);
+        var allOutputTokens = allMessages.Sum(m => m.OutputTokens ?? 0);
+        if (allInputTokens == 0 && allOutputTokens == 0)
+        {
+            var totalTokens = allMessages.Sum(m => m.TokenCount ?? 0);
+            allInputTokens = (int)(totalTokens * 0.3);
+            allOutputTokens = (int)(totalTokens * 0.7);
+        }
+        _metrics.TotalCost = (allInputTokens * inputRate) + (allOutputTokens * outputRate);
+
+        // Budget percentage
+        if (_config.MonthlyCostBudget > 0)
+        {
+            _metrics.BudgetPercentage = (double)(_metrics.CurrentMonthCost / _config.MonthlyCostBudget * 100);
+        }
+
+        // Daily average (last 30 days)
+        var last30DaysMessages = allMessages.Where(m => m.CreatedAt >= thirtyDaysAgo).ToList();
+        var last30DaysInput = last30DaysMessages.Sum(m => m.InputTokens ?? (int)((m.TokenCount ?? 0) * 0.3));
+        var last30DaysOutput = last30DaysMessages.Sum(m => m.OutputTokens ?? (int)((m.TokenCount ?? 0) * 0.7));
+        var last30DaysCost = (last30DaysInput * inputRate) + (last30DaysOutput * outputRate);
+        _metrics.DailyAverage = last30DaysCost / 30;
+
+        // Daily costs
+        _dailyCosts = Enumerable.Range(0, 30)
+            .Select(i => thirtyDaysAgo.AddDays(i).Date)
+            .Select(date =>
+            {
+                var dayMessages = allMessages.Where(m => m.CreatedAt.Date == date).ToList();
+                var dayInput = dayMessages.Sum(m => m.InputTokens ?? (int)((m.TokenCount ?? 0) * 0.3));
+                var dayOutput = dayMessages.Sum(m => m.OutputTokens ?? (int)((m.TokenCount ?? 0) * 0.7));
+                return new DailyCost
+                {
+                    Date = date,
+                    Cost = (dayInput * inputRate) + (dayOutput * outputRate)
+                };
+            })
+            .ToList();
+
+        // Top users by cost
+        var userIds = thisMonthMessages.Select(m => m.UserId).Distinct().ToList();
+        var users = await DbContext.Users
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayName ?? u.Username);
+
+        _topUsersByCost = thisMonthMessages
+            .GroupBy(m => m.UserId)
+            .Select(g =>
+            {
+                var input = g.Sum(m => m.InputTokens ?? (int)((m.TokenCount ?? 0) * 0.3));
+                var output = g.Sum(m => m.OutputTokens ?? (int)((m.TokenCount ?? 0) * 0.7));
+                return new UserCost
+                {
+                    UserId = g.Key,
+                    DisplayName = users.TryGetValue(g.Key, out var name) ? name : "Unknown",
+                    Cost = (input * inputRate) + (output * outputRate)
+                };
+            })
+            .OrderByDescending(u => u.Cost)
+            .Take(5)
+            .ToList();
+    }
+
+    private async Task SaveSettings()
+    {
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+            if (config != null)
+            {
+                config.CostPerInputToken = _config.CostPerInputToken;
+                config.CostPerOutputToken = _config.CostPerOutputToken;
+                config.MonthlyCostBudget = _config.MonthlyCostBudget;
+                config.CostAlertEnabled = _config.CostAlertEnabled;
+                config.CostAlertThreshold = _config.CostAlertThreshold;
+                config.UpdatedAt = DateTimeService.UtcNow;
+                config.UpdatedBy = CurrentUser.WindowsIdentity;
+
+                await DbContext.SaveChangesAsync();
+                ToastService.ShowSuccess("Settings saved successfully");
+
+                // Reload metrics with new rates
+                await LoadMetrics();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatCost(decimal cost)
+    {
+        if (cost >= 1000)
+            return $"${cost:N0}";
+        if (cost >= 1)
+            return $"${cost:N2}";
+        if (cost >= 0.01m)
+            return $"${cost:N2}";
+        return $"${cost:N4}";
+    }
+
+    private string FormatNumber(long number)
+    {
+        if (number >= 1_000_000)
+            return $"{number / 1_000_000.0:F1}M";
+        if (number >= 1_000)
+            return $"{number / 1_000.0:F1}K";
+        return number.ToString("N0");
+    }
+
+    private string GetBudgetColor(double percentage)
+    {
+        if (percentage >= 90) return "#d13438";
+        if (percentage >= 75) return "#ffb900";
+        return "#107c10";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private class CostMetrics
+    {
+        public decimal CurrentMonthCost { get; set; }
+        public decimal TotalCost { get; set; }
+        public decimal DailyAverage { get; set; }
+        public double BudgetPercentage { get; set; }
+        public long InputTokensThisMonth { get; set; }
+        public long OutputTokensThisMonth { get; set; }
+        public long TotalTokensThisMonth { get; set; }
+        public int RequestsThisMonth { get; set; }
+        public decimal InputCostThisMonth { get; set; }
+        public decimal OutputCostThisMonth { get; set; }
+    }
+
+    private class DailyCost
+    {
+        public DateTime Date { get; set; }
+        public decimal Cost { get; set; }
+    }
+
+    private class UserCost
+    {
+        public Guid UserId { get; set; }
+        public string DisplayName { get; set; } = "";
+        public decimal Cost { get; set; }
+    }
+}

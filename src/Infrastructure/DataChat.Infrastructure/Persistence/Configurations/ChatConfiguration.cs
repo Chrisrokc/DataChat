@@ -23,8 +23,15 @@ public class ChatConfiguration : IEntityTypeConfiguration<Chat>
             .HasMaxLength(256);
 
         builder.HasIndex(c => c.UserId);
+        builder.HasIndex(c => c.FolderId);
+        builder.HasIndex(c => new { c.UserId, c.IsPinned });
 
         builder.HasQueryFilter(c => !c.IsDeleted);
+
+        builder.HasOne(c => c.Folder)
+            .WithMany(f => f.Chats)
+            .HasForeignKey(c => c.FolderId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasMany(c => c.Messages)
             .WithOne(m => m.Chat)
