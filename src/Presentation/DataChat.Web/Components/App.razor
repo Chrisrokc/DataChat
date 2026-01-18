@@ -1,3 +1,5 @@
+@inject IDbContextFactory<DataChat.Infrastructure.Persistence.ApplicationDbContext> DbContextFactory
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -8,7 +10,7 @@
     <link href="_content/Microsoft.FluentUI.AspNetCore.Components/css/reboot.css" rel="stylesheet" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="DataChat.Web.styles.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="icon" type="image/png" href="@_faviconPath" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
@@ -20,3 +22,24 @@
 </body>
 
 </html>
+
+@code {
+    private string _faviconPath = "favicon.png";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var branding = await dbContext.BrandingConfiguration.FirstOrDefaultAsync();
+            if (branding != null && !string.IsNullOrEmpty(branding.FaviconPath))
+            {
+                _faviconPath = branding.FaviconPath;
+            }
+        }
+        catch
+        {
+            // Use default favicon
+        }
+    }
+}

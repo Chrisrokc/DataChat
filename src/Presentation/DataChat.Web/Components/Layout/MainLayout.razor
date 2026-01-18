@@ -2,6 +2,8 @@
 @inject IJSRuntime JS
 @inject IDbContextFactory<DataChat.Infrastructure.Persistence.ApplicationDbContext> DbContextFactory
 
+@using DataChat.Domain.Entities
+
 <FluentDesignTheme @bind-Mode="@_themeMode" StorageName="theme" />
 <FluentDialogProvider />
 <FluentToastProvider />
@@ -60,13 +62,20 @@
         </button>
 
         <div style="display: flex; align-items: center; gap: 8px; margin-left: 12px;">
-            @* Copilot-style icon *@
-            <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #0078d4, #5c2d91); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-            </div>
-            <span style="font-weight: 600; font-size: 16px; color: #242424;">DataChat</span>
+            @if (!string.IsNullOrEmpty(_logoPath))
+            {
+                <img src="@_logoPath" alt="Logo" style="height: 28px; width: auto; border-radius: 6px;" />
+            }
+            else
+            {
+                @* Default Copilot-style icon *@
+                <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #0078d4, #5c2d91); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+            }
+            <span style="font-weight: 600; font-size: 16px; color: var(--neutral-foreground-rest);">@_applicationName</span>
         </div>
 
         <div style="flex: 1;"></div>
@@ -110,8 +119,16 @@
         }
 
         @* Main content *@
-        <main style="flex: 1; overflow-y: auto; padding: 24px;">
-            @Body
+        <main style="flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column;">
+            <div style="flex: 1;">
+                @Body
+            </div>
+            @if (!string.IsNullOrEmpty(_footerText))
+            {
+                <footer style="padding: 12px 0; margin-top: 16px; border-top: 1px solid var(--neutral-stroke-rest); text-align: center; color: var(--neutral-foreground-hint); font-size: 12px;">
+                    @_footerText
+                </footer>
+            }
         </main>
     </div>
 </div>
@@ -204,6 +221,11 @@
     private bool _drawerOpen = true;
     private DesignThemeModes _themeMode = DesignThemeModes.Light;
 
+    // Branding state
+    private string _applicationName = "DataChat";
+    private string? _logoPath;
+    private string? _footerText;
+
     // Announcement state
     private bool _showAnnouncement;
     private string _announcementMessage = "";
@@ -213,7 +235,27 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadBranding();
         await LoadAnnouncement();
+    }
+
+    private async Task LoadBranding()
+    {
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var branding = await dbContext.BrandingConfiguration.FirstOrDefaultAsync();
+            if (branding != null)
+            {
+                _applicationName = branding.ApplicationName;
+                _logoPath = branding.LogoPath;
+                _footerText = branding.FooterText;
+            }
+        }
+        catch
+        {
+            // Ignore errors - use defaults
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

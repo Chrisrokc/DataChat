@@ -15,6 +15,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.10.3" />
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="4.10.3" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
   <PropertyGroup>

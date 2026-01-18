@@ -36,6 +36,10 @@ public class AuthenticationService : IAuthenticationService
             return new AuthenticationResult(false, ErrorMessage: "Invalid username or password");
         }
 
+        // Update last login timestamp
+        user.LastLoginAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
         var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
 
         return new AuthenticationResult(

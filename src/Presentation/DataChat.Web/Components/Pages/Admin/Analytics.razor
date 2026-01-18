@@ -488,10 +488,16 @@ else
     {
         await using var dbContext = await DbContextFactory.CreateDbContextAsync();
 
+        // Use EF.Functions.DateFromParts for SQL Server compatibility
         var messages = await dbContext.ChatMessages
             .Where(m => m.CreatedAt >= periodStart)
-            .GroupBy(m => m.CreatedAt.Date)
-            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .GroupBy(m => new { m.CreatedAt.Year, m.CreatedAt.Month, m.CreatedAt.Day })
+            .Select(g => new {
+                Year = g.Key.Year,
+                Month = g.Key.Month,
+                Day = g.Key.Day,
+                Count = g.Count()
+            })
             .ToListAsync();
 
         // Fill in all days (including zeros)
@@ -500,7 +506,7 @@ else
             .Select(date => new DailyActivity
             {
                 Date = date,
-                MessageCount = messages.FirstOrDefault(m => m.Date == date)?.Count ?? 0
+                MessageCount = messages.FirstOrDefault(m => m.Year == date.Year && m.Month == date.Month && m.Day == date.Day)?.Count ?? 0
             })
             .ToList();
     }
@@ -509,15 +515,16 @@ else
     {
         await using var dbContext = await DbContextFactory.CreateDbContextAsync();
 
-        _topUsers = await dbContext.Chats
-            .GroupBy(c => new { c.UserId, c.User!.DisplayName })
+        // Use a simpler query that EF Core can translate - aggregate from messages directly
+        _topUsers = await dbContext.ChatMessages
+            .GroupBy(m => new { m.Chat!.UserId, m.Chat.User!.DisplayName })
             .Select(g => new TopUser
             {
                 UserId = g.Key.UserId,
                 DisplayName = g.Key.DisplayName ?? "Unknown",
-                ChatCount = g.Count(),
-                MessageCount = g.Sum(c => c.Messages.Count),
-                TokenCount = g.Sum(c => c.Messages.Where(m => m.TokenCount.HasValue).Sum(m => m.TokenCount ?? 0))
+                ChatCount = g.Select(m => m.ChatId).Distinct().Count(),
+                MessageCount = g.Count(),
+                TokenCount = g.Sum(m => m.TokenCount ?? 0)
             })
             .OrderByDescending(u => u.MessageCount)
             .Take(10)

@@ -3,6 +3,7 @@
 @inject IApplicationDbContext DbContext
 @inject IToastService ToastService
 @inject ILogger<Branding> Logger
+@inject IWebHostEnvironment Environment
 
 <PageTitle>Branding Configuration</PageTitle>
 
@@ -10,110 +11,154 @@
 
 @if (_config != null)
 {
-    <FluentGrid Spacing="3">
-        <FluentGridItem xs="12" sm="8">
-            <FluentCard Style="padding: 16px;">
-                <h6 style="margin-bottom: 16px;">Application Branding</h6>
-
-                <div style="display: flex; flex-direction: column; gap: 16px;">
-                    <FluentTextField @bind-Value="_config.ApplicationName"
-                                    Label="Application Name"
-                                    Required="true"
-                                    Style="width: 100%;" />
-                    <span style="font-size: 12px; color: gray; margin-top: -12px;">The name displayed in the header and browser tab</span>
-
-                    <FluentTextField @bind-Value="_aiAssistantName"
-                                    Label="AI Assistant Name"
-                                    Placeholder="e.g., Assistant, Copilot, Helper"
-                                    Style="width: 100%;" />
-                    <span style="font-size: 12px; color: gray; margin-top: -12px;">The name displayed in chat messages from the AI</span>
-
-                    <FluentTextArea @bind-Value="_config.FooterText"
-                                   Label="Footer Text"
-                                   Rows="2"
-                                   Style="width: 100%;" />
-                    <span style="font-size: 12px; color: gray; margin-top: -12px;">Optional text displayed in the application footer</span>
-
-                    <FluentGrid Spacing="3">
-                        <FluentGridItem xs="12" sm="4">
-                            <label style="font-weight: 500; margin-bottom: 8px; display: block;">Primary Color</label>
-                            <input type="color" @bind="_config.PrimaryColor" style="width: 100%; height: 40px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer;" />
-                            <FluentTextField @bind-Value="_config.PrimaryColor" Style="width: 100%; margin-top: 4px;" />
-                        </FluentGridItem>
-
-                        <FluentGridItem xs="12" sm="4">
-                            <label style="font-weight: 500; margin-bottom: 8px; display: block;">Secondary Color</label>
-                            <input type="color" @bind="_config.SecondaryColor" style="width: 100%; height: 40px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer;" />
-                            <FluentTextField @bind-Value="_config.SecondaryColor" Style="width: 100%; margin-top: 4px;" />
-                        </FluentGridItem>
-
-                        <FluentGridItem xs="12" sm="4">
-                            <label style="font-weight: 500; margin-bottom: 8px; display: block;">Accent Color</label>
-                            <input type="color" @bind="_config.AccentColor" style="width: 100%; height: 40px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer;" />
-                            <FluentTextField @bind-Value="_config.AccentColor" Style="width: 100%; margin-top: 4px;" />
-                        </FluentGridItem>
-                    </FluentGrid>
-
-                    <FluentTextField @bind-Value="_config.LogoPath"
-                                    Label="Logo Path (optional)"
-                                    Placeholder="/images/logo.png"
-                                    Style="width: 100%;" />
-                    <span style="font-size: 12px; color: gray; margin-top: -12px;">Path to logo image file</span>
-
-                    <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
-                        <FluentButton Appearance="Appearance.Outline" OnClick="ResetToDefaults">
-                            Reset to Defaults
-                        </FluentButton>
-                        <FluentButton Appearance="Appearance.Accent" OnClick="SaveBranding" Disabled="_isSaving">
-                            @if (_isSaving)
-                            {
-                                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
-                            }
-                            Save Changes
-                        </FluentButton>
-                    </div>
+    <FluentCard Style="padding: 16px; margin-bottom: 16px;">
+        <h6 style="margin-bottom: 16px;">Current Branding</h6>
+        <div style="display: flex; gap: 32px; align-items: flex-start;">
+            <div style="text-align: center;">
+                <label style="font-size: 12px; color: gray; display: block; margin-bottom: 8px;">Logo</label>
+                <div style="padding: 16px; background: var(--neutral-layer-2); border-radius: 8px; min-width: 120px; min-height: 60px; display: flex; align-items: center; justify-content: center;">
+                    @if (!string.IsNullOrEmpty(_config.LogoPath))
+                    {
+                        <img src="@_config.LogoPath" alt="Current Logo" style="max-height: 40px; max-width: 180px;" />
+                    }
+                    else
+                    {
+                        <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #0078d4, #5c2d91); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                        </div>
+                    }
                 </div>
-            </FluentCard>
-        </FluentGridItem>
+                <span style="font-size: 11px; color: gray;">@(string.IsNullOrEmpty(_config.LogoPath) ? "Default" : "Custom")</span>
+            </div>
+            <div style="text-align: center;">
+                <label style="font-size: 12px; color: gray; display: block; margin-bottom: 8px;">Favicon</label>
+                <div style="padding: 16px; background: var(--neutral-layer-2); border-radius: 8px; min-width: 80px; min-height: 60px; display: flex; align-items: center; justify-content: center;">
+                    @if (!string.IsNullOrEmpty(_config.FaviconPath))
+                    {
+                        <img src="@_config.FaviconPath" alt="Current Favicon" style="width: 32px; height: 32px;" />
+                    }
+                    else
+                    {
+                        <img src="favicon.png" alt="Default Favicon" style="width: 32px; height: 32px;" />
+                    }
+                </div>
+                <span style="font-size: 11px; color: gray;">@(string.IsNullOrEmpty(_config.FaviconPath) ? "Default" : "Custom")</span>
+            </div>
+            <div style="text-align: center;">
+                <label style="font-size: 12px; color: gray; display: block; margin-bottom: 8px;">Application Name</label>
+                <div style="padding: 16px; background: var(--neutral-layer-2); border-radius: 8px; min-width: 120px; min-height: 60px; display: flex; align-items: center; justify-content: center;">
+                    <span style="font-weight: 600; font-size: 16px;">@_config.ApplicationName</span>
+                </div>
+            </div>
+        </div>
+    </FluentCard>
 
-        <FluentGridItem xs="12" sm="4">
-            <FluentCard Style="padding: 16px;">
-                <h6 style="margin-bottom: 16px;">Preview</h6>
+    <FluentCard Style="padding: 16px;">
+        <h6 style="margin-bottom: 16px;">Application Branding</h6>
 
-                <div style="background-color: @_config.PrimaryColor; padding: 16px; color: white; border-radius: 4px;">
-                    <strong style="color: white;">@_config.ApplicationName</strong>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <FluentTextField @bind-Value="_config.ApplicationName"
+                            Label="Application Name"
+                            Required="true"
+                            Style="width: 100%;" />
+            <span style="font-size: 12px; color: gray; margin-top: -12px;">The name displayed in the header and browser tab</span>
+
+            <FluentTextField @bind-Value="_aiAssistantName"
+                            Label="AI Assistant Name"
+                            Placeholder="e.g., Assistant, Copilot, Helper"
+                            Style="width: 100%;" />
+            <span style="font-size: 12px; color: gray; margin-top: -12px;">The name displayed in chat messages from the AI</span>
+
+            <FluentTextArea @bind-Value="_config.FooterText"
+                           Label="Footer Text"
+                           Rows="2"
+                           Style="width: 100%;" />
+            <span style="font-size: 12px; color: gray; margin-top: -12px;">Optional text displayed in the application footer</span>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                @* Logo Upload Section *@
+                <div>
+                    <label style="font-weight: 500; margin-bottom: 8px; display: block;">Logo</label>
+
+                    @if (!string.IsNullOrEmpty(_config.LogoPath))
+                    {
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px; background: var(--neutral-layer-2); border-radius: 8px;">
+                            <img src="@_config.LogoPath" alt="Current Logo" style="max-height: 40px; max-width: 150px; border-radius: 4px;" />
+                            <FluentButton Appearance="Appearance.Stealth" OnClick="RemoveLogo" Title="Remove logo">
+                                Remove
+                            </FluentButton>
+                        </div>
+                    }
+
+                    <InputFile OnChange="HandleLogoUpload" accept=".png,.jpg,.jpeg,.svg" style="display: none;" id="logo-upload" />
+                    <label for="logo-upload" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--neutral-layer-3); border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer; font-size: 14px;">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                        </svg>
+                        @(_isUploadingLogo ? "Uploading..." : "Upload Logo")
+                    </label>
+
+                    <div style="font-size: 12px; color: gray; margin-top: 8px;">
+                        <strong>Requirements:</strong> PNG, JPG, or SVG.<br/>
+                        Max: 200x60 pixels, 500KB.
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_logoUploadError))
+                    {
+                        <div style="font-size: 12px; color: #d13438; margin-top: 4px;">@_logoUploadError</div>
+                    }
                 </div>
 
-                <FluentCard Style="padding: 16px; margin-top: 8px; background-color: var(--neutral-layer-2);">
-                    <p style="margin-bottom: 8px;">
-                        This is a preview of how your branding will appear.
-                    </p>
-                    <div style="display: flex; gap: 8px;">
-                        <FluentButton Style="@($"background-color: {_config.PrimaryColor}; color: white;")">
-                            Primary Button
-                        </FluentButton>
-                        <FluentButton Appearance="Appearance.Outline" Style="@($"border-color: {_config.SecondaryColor}; color: {_config.SecondaryColor};")">
-                            Secondary
-                        </FluentButton>
-                        <FluentButton Appearance="Appearance.Stealth" Style="@($"color: {_config.AccentColor};")">
-                            Accent Link
-                        </FluentButton>
-                    </div>
-                </FluentCard>
+                @* Favicon Upload Section *@
+                <div>
+                    <label style="font-weight: 500; margin-bottom: 8px; display: block;">Favicon</label>
 
-                @if (!string.IsNullOrEmpty(_config.FooterText))
-                {
-                    <div style="background-color: @_config.SecondaryColor; padding: 8px; color: white; border-radius: 4px; margin-top: 8px;">
-                        <span style="font-size: 12px; color: white;">@_config.FooterText</span>
-                    </div>
-                }
+                    @if (!string.IsNullOrEmpty(_config.FaviconPath))
+                    {
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px; background: var(--neutral-layer-2); border-radius: 8px;">
+                            <img src="@_config.FaviconPath" alt="Current Favicon" style="width: 32px; height: 32px; border-radius: 4px;" />
+                            <FluentButton Appearance="Appearance.Stealth" OnClick="RemoveFavicon" Title="Remove favicon">
+                                Remove
+                            </FluentButton>
+                        </div>
+                    }
 
-                <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-top: 16px;">
-                    Note: Full theme changes require a page refresh after saving.
-                </FluentMessageBar>
-            </FluentCard>
-        </FluentGridItem>
-    </FluentGrid>
+                    <InputFile OnChange="HandleFaviconUpload" accept=".png,.ico,.svg" style="display: none;" id="favicon-upload" />
+                    <label for="favicon-upload" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--neutral-layer-3); border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; cursor: pointer; font-size: 14px;">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                        </svg>
+                        @(_isUploadingFavicon ? "Uploading..." : "Upload Favicon")
+                    </label>
+
+                    <div style="font-size: 12px; color: gray; margin-top: 8px;">
+                        <strong>Requirements:</strong> PNG, ICO, or SVG.<br/>
+                        Recommended: 32x32 or 64x64 pixels, 100KB max.
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_faviconUploadError))
+                    {
+                        <div style="font-size: 12px; color: #d13438; margin-top: 4px;">@_faviconUploadError</div>
+                    }
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                <FluentButton Appearance="Appearance.Outline" OnClick="ResetToDefaults">
+                    Reset to Defaults
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Accent" OnClick="SaveBranding" Disabled="_isSaving">
+                    @if (_isSaving)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                    }
+                    Save Changes
+                </FluentButton>
+            </div>
+        </div>
+    </FluentCard>
 }
 else
 {
@@ -125,6 +170,19 @@ else
     private SystemConfiguration? _systemConfig;
     private string _aiAssistantName = "Assistant";
     private bool _isSaving;
+    private bool _isUploadingLogo;
+    private bool _isUploadingFavicon;
+    private string? _logoUploadError;
+    private string? _faviconUploadError;
+
+    // Logo constraints
+    private const int LogoMaxWidth = 200;
+    private const int LogoMaxHeight = 60;
+    private const long LogoMaxFileSize = 500 * 1024; // 500KB
+
+    // Favicon constraints
+    private const int FaviconMaxSize = 64;
+    private const long FaviconMaxFileSize = 100 * 1024; // 100KB
 
     protected override async Task OnInitializedAsync()
     {
@@ -147,6 +205,205 @@ else
         if (_systemConfig != null)
         {
             _aiAssistantName = _systemConfig.AiAssistantName;
+        }
+    }
+
+    private async Task HandleLogoUpload(InputFileChangeEventArgs e)
+    {
+        _logoUploadError = null;
+        _isUploadingLogo = true;
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+
+            // Validate file extension
+            var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+            if (extension != ".png" && extension != ".jpg" && extension != ".jpeg" && extension != ".svg")
+            {
+                _logoUploadError = "Invalid file type. Please upload a PNG, JPG, or SVG file.";
+                return;
+            }
+
+            // Validate file size
+            if (file.Size > LogoMaxFileSize)
+            {
+                _logoUploadError = $"File too large. Maximum size is 500KB. Your file is {file.Size / 1024}KB.";
+                return;
+            }
+
+            // Read file content
+            using var stream = file.OpenReadStream(LogoMaxFileSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+
+            // Validate image dimensions (skip for SVG)
+            if (extension != ".svg")
+            {
+                using var image = SixLabors.ImageSharp.Image.Load(fileBytes);
+                if (image.Width > LogoMaxWidth || image.Height > LogoMaxHeight)
+                {
+                    _logoUploadError = $"Image dimensions exceed the maximum of {LogoMaxWidth}x{LogoMaxHeight} pixels. Your image is {image.Width}x{image.Height} pixels.";
+                    return;
+                }
+            }
+
+            // Create uploads directory if it doesn't exist
+            var uploadsPath = Path.Combine(Environment.WebRootPath, "uploads", "branding");
+            Directory.CreateDirectory(uploadsPath);
+
+            // Generate unique filename
+            var fileName = $"logo_{DateTime.UtcNow:yyyyMMddHHmmss}{extension}";
+            var filePath = Path.Combine(uploadsPath, fileName);
+
+            // Delete old logo if exists
+            if (!string.IsNullOrEmpty(_config?.LogoPath))
+            {
+                DeleteFile(_config.LogoPath);
+            }
+
+            // Save file
+            await File.WriteAllBytesAsync(filePath, fileBytes);
+
+            // Update config
+            if (_config != null)
+            {
+                _config.LogoPath = $"/uploads/branding/{fileName}";
+            }
+
+            ToastService.ShowSuccess("Logo uploaded successfully!");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload logo");
+            _logoUploadError = "Failed to upload logo. Please try again.";
+        }
+        finally
+        {
+            _isUploadingLogo = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleFaviconUpload(InputFileChangeEventArgs e)
+    {
+        _faviconUploadError = null;
+        _isUploadingFavicon = true;
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+
+            // Validate file extension
+            var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+            if (extension != ".png" && extension != ".ico" && extension != ".svg")
+            {
+                _faviconUploadError = "Invalid file type. Please upload a PNG, ICO, or SVG file.";
+                return;
+            }
+
+            // Validate file size
+            if (file.Size > FaviconMaxFileSize)
+            {
+                _faviconUploadError = $"File too large. Maximum size is 100KB. Your file is {file.Size / 1024}KB.";
+                return;
+            }
+
+            // Read file content
+            using var stream = file.OpenReadStream(FaviconMaxFileSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+
+            // Validate image dimensions (skip for SVG and ICO)
+            if (extension == ".png")
+            {
+                using var image = SixLabors.ImageSharp.Image.Load(fileBytes);
+                if (image.Width > FaviconMaxSize || image.Height > FaviconMaxSize)
+                {
+                    _faviconUploadError = $"Image dimensions exceed the maximum of {FaviconMaxSize}x{FaviconMaxSize} pixels. Your image is {image.Width}x{image.Height} pixels.";
+                    return;
+                }
+                if (image.Width != image.Height)
+                {
+                    _faviconUploadError = "Favicon should be square (equal width and height).";
+                    return;
+                }
+            }
+
+            // Create uploads directory if it doesn't exist
+            var uploadsPath = Path.Combine(Environment.WebRootPath, "uploads", "branding");
+            Directory.CreateDirectory(uploadsPath);
+
+            // Generate unique filename
+            var fileName = $"favicon_{DateTime.UtcNow:yyyyMMddHHmmss}{extension}";
+            var filePath = Path.Combine(uploadsPath, fileName);
+
+            // Delete old favicon if exists
+            if (!string.IsNullOrEmpty(_config?.FaviconPath))
+            {
+                DeleteFile(_config.FaviconPath);
+            }
+
+            // Save file
+            await File.WriteAllBytesAsync(filePath, fileBytes);
+
+            // Update config
+            if (_config != null)
+            {
+                _config.FaviconPath = $"/uploads/branding/{fileName}";
+            }
+
+            ToastService.ShowSuccess("Favicon uploaded successfully! Refresh the page to see the new favicon in the browser tab.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to upload favicon");
+            _faviconUploadError = "Failed to upload favicon. Please try again.";
+        }
+        finally
+        {
+            _isUploadingFavicon = false;
+            StateHasChanged();
+        }
+    }
+
+    private void DeleteFile(string relativePath)
+    {
+        var filePath = Path.Combine(Environment.WebRootPath, relativePath.TrimStart('/'));
+        if (File.Exists(filePath))
+        {
+            try
+            {
+                File.Delete(filePath);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to delete file: {Path}", filePath);
+            }
+        }
+    }
+
+    private void RemoveLogo()
+    {
+        if (_config != null && !string.IsNullOrEmpty(_config.LogoPath))
+        {
+            DeleteFile(_config.LogoPath);
+            _config.LogoPath = null;
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveFavicon()
+    {
+        if (_config != null && !string.IsNullOrEmpty(_config.FaviconPath))
+        {
+            DeleteFile(_config.FaviconPath);
+            _config.FaviconPath = null;
+            StateHasChanged();
         }
     }
 
@@ -185,11 +442,12 @@ else
         if (_config == null) return;
 
         _config.ApplicationName = "Enterprise Chat";
-        _config.PrimaryColor = "#0078d4";
-        _config.SecondaryColor = "#424242";
-        _config.AccentColor = "#0078d4";
         _config.FooterText = null;
-        _config.LogoPath = null;
+
+        // Remove logo and favicon files if exists
+        RemoveLogo();
+        RemoveFavicon();
+
         _aiAssistantName = "Assistant";
 
         StateHasChanged();

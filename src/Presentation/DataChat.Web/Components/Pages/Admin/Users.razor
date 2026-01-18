@@ -57,7 +57,16 @@
                     <FluentBadge BackgroundColor="#d13438" Color="white">Inactive</FluentBadge>
                 }
             </TemplateColumn>
-            <PropertyColumn Property="@(u => u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToString("MMM dd, HH:mm") : "Never")" Title="Last Login" />
+            <TemplateColumn Title="Last Login" Sortable="true" SortBy="@(GridSort<User>.ByAscending(u => u.LastLoginAt))">
+                @if (context.LastLoginAt.HasValue)
+                {
+                    <span>@context.LastLoginAt.Value.ToLocalTime().ToString("MMM dd, HH:mm")</span>
+                }
+                else
+                {
+                    <span style="color: #888;">Never</span>
+                }
+            </TemplateColumn>
             <TemplateColumn Title="Actions" Style="width: 150px;">
                 <FluentButton Appearance="Appearance.Stealth" Title="Edit" OnClick="@(() => EditUser(context))">Edit</FluentButton>
                 <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => ToggleUserStatus(context))">
