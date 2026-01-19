@@ -778,12 +778,12 @@
                     }
 
                     @* Upload Button - using label for reliable file input trigger *@
-                    <label for="fileUploadInput" class="upload-btn" style="@(_isStreaming ? "opacity: 0.4; cursor: not-allowed;" : "")" title="Attach file (images, PDF, text)">
+                    <label for="fileUploadInput" class="upload-btn" style="@(_isStreaming ? "opacity: 0.4; cursor: not-allowed;" : "")" title="Attach file (images, PDF, Excel, CSV, text)">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="#0078d4">
                             <path d="M11.5 0C12.6 0 13.6.4 14.4 1.2L17.8 4.6C18.6 5.4 19 6.4 19 7.5V17C19 18.7 17.7 20 16 20H4C2.3 20 1 18.7 1 17V3C1 1.3 2.3 0 4 0H11.5ZM11 2H4C3.4 2 3 2.4 3 3V17C3 17.6 3.4 18 4 18H16C16.6 18 17 17.6 17 17V8H13C11.9 8 11 7.1 11 6V2ZM13 2.4V6H16.6L13 2.4Z"/>
                         </svg>
                     </label>
-                    <InputFile @ref="_fileInput" id="fileUploadInput" OnChange="HandleFileSelected" accept="image/*,.pdf,.txt,.csv,.md,.json" style="display: none;" disabled="@_isStreaming" multiple />
+                    <InputFile @ref="_fileInput" id="fileUploadInput" OnChange="HandleFileSelected" accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.xls" style="display: none;" disabled="@_isStreaming" multiple />
 
                     <textarea @bind="_userInput"
                               @bind:event="oninput"
@@ -1037,7 +1037,7 @@
     private const int MaxFileSize = 20 * 1024 * 1024; // 20MB for PDFs
     private const int MaxFiles = 4;
     private readonly string[] _allowedImageTypes = { "image/jpeg", "image/png", "image/gif", "image/webp" };
-    private readonly string[] _allowedDocumentTypes = { "application/pdf", "text/plain", "text/csv", "text/markdown", "application/json" };
+    private readonly string[] _allowedDocumentTypes = { "application/pdf", "text/plain", "text/csv", "text/markdown", "application/json", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel" };
     private bool _isDragOver;
 
     private bool IsAllowedFileType(string contentType) =>
@@ -1476,7 +1476,7 @@
             // Validate file type
             if (!IsAllowedFileType(file.ContentType))
             {
-                ToastService.ShowError($"'{file.Name}' is not a supported file type. Use images (JPG, PNG, GIF, WebP) or documents (PDF, TXT, CSV, MD, JSON).");
+                ToastService.ShowError($"'{file.Name}' is not a supported file type. Use images (JPG, PNG, GIF, WebP) or documents (PDF, Excel, CSV, TXT, MD, JSON).");
                 continue;
             }
 
@@ -1542,6 +1542,8 @@
         {
             "application/pdf" => "#d13438",  // Red for PDF
             "text/csv" => "#107c10",          // Green for CSV
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "#217346",  // Excel green for XLSX
+            "application/vnd.ms-excel" => "#217346",  // Excel green for XLS
             "application/json" => "#ffb900",  // Yellow for JSON
             _ => "#0078d4"                    // Blue for others
         };

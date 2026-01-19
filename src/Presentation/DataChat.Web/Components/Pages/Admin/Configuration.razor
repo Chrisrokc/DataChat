@@ -14,6 +14,83 @@
 <h4 style="margin-bottom: 16px;">System Configuration</h4>
 
 <FluentTabs>
+    <FluentTab Label="Status" Id="status-overview">
+        <FluentCard Style="padding: 16px; margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h5 style="margin: 0;">Configuration Status</h5>
+                <FluentButton Appearance="Appearance.Outline" OnClick="CheckAllStatus" Disabled="_isCheckingStatus">
+                    @if (_isCheckingStatus)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                    }
+                    Refresh Status
+                </FluentButton>
+            </div>
+
+            <FluentGrid Spacing="3">
+                <FluentGridItem xs="12" sm="6">
+                    <FluentCard Style="padding: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            @(RenderStatusIcon(_sqlStatus))
+                            <div>
+                                <div style="font-weight: 500;">SQL Server</div>
+                                <div style="font-size: 12px; color: gray;">@_sqlStatusMessage</div>
+                            </div>
+                        </div>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentCard Style="padding: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            @(RenderStatusIcon(_chatModelStatus))
+                            <div>
+                                <div style="font-weight: 500;">Chat Model (@(_config?.LlmProvider.ToString() ?? "Not Set"))</div>
+                                <div style="font-size: 12px; color: gray;">@_chatModelStatusMessage</div>
+                            </div>
+                        </div>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentCard Style="padding: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            @(RenderStatusIcon(_embeddingModelStatus))
+                            <div>
+                                <div style="font-weight: 500;">Embedding Model</div>
+                                <div style="font-size: 12px; color: gray;">@_embeddingModelStatusMessage</div>
+                            </div>
+                        </div>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentCard Style="padding: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            @(RenderStatusIcon(_ragStatus))
+                            <div>
+                                <div style="font-weight: 500;">RAG Settings</div>
+                                <div style="font-size: 12px; color: gray;">@_ragStatusMessage</div>
+                            </div>
+                        </div>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentCard Style="padding: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            @(RenderStatusIcon(_authStatus))
+                            <div>
+                                <div style="font-weight: 500;">Authentication</div>
+                                <div style="font-size: 12px; color: gray;">@_authStatusMessage</div>
+                            </div>
+                        </div>
+                    </FluentCard>
+                </FluentGridItem>
+            </FluentGrid>
+        </FluentCard>
+    </FluentTab>
+
     <FluentTab Label="SQL Server" Id="sql-settings">
         @if (_config != null)
         {
@@ -342,22 +419,57 @@
 
                     <FluentGridItem xs="12">
                         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
-                            <FluentButton Appearance="Appearance.Outline" OnClick="TestConnection" Disabled="_isTesting">
+                            <FluentButton Appearance="Appearance.Accent" OnClick="TestAndSaveSettings" Disabled="_isTesting">
                                 @if (_isTesting)
                                 {
                                     <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
                                 }
-                                Test Connection
-                            </FluentButton>
-                            <FluentButton Appearance="Appearance.Accent" OnClick="SaveSettings" Disabled="_isSaving">
-                                @if (_isSaving)
-                                {
-                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
-                                }
-                                Save Settings
+                                Test & Save Settings
                             </FluentButton>
                         </div>
                     </FluentGridItem>
+
+                    @if (!string.IsNullOrEmpty(_testStatus) || !string.IsNullOrEmpty(_chatTestResult) || !string.IsNullOrEmpty(_embeddingTestResult))
+                    {
+                        <FluentGridItem xs="12">
+                            <FluentCard Style="margin-top: 16px; padding: 16px;">
+                                @if (!string.IsNullOrEmpty(_testStatus))
+                                {
+                                    <div style="margin-bottom: 8px; font-weight: 500;">@_testStatus</div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_chatTestResult))
+                                {
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                        @if (_chatTestPassed)
+                                        {
+                                            <FluentIcon Value="@(new Icons.Filled.Size20.CheckmarkCircle())" Color="Color.Success" />
+                                        }
+                                        else
+                                        {
+                                            <FluentIcon Value="@(new Icons.Filled.Size20.DismissCircle())" Color="Color.Error" />
+                                        }
+                                        <span>@_chatTestResult</span>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_embeddingTestResult))
+                                {
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        @if (_embeddingTestPassed)
+                                        {
+                                            <FluentIcon Value="@(new Icons.Filled.Size20.CheckmarkCircle())" Color="Color.Success" />
+                                        }
+                                        else
+                                        {
+                                            <FluentIcon Value="@(new Icons.Filled.Size20.DismissCircle())" Color="Color.Error" />
+                                        }
+                                        <span>@_embeddingTestResult</span>
+                                    </div>
+                                }
+                            </FluentCard>
+                        </FluentGridItem>
+                    }
                 </FluentGrid>
             </FluentCard>
         }
@@ -365,38 +477,6 @@
         {
             <FluentProgressRing />
         }
-    </FluentTab>
-
-    <FluentTab Label="Test Chat" Id="test-chat">
-        <FluentCard Style="padding: 16px; margin-top: 16px;">
-            <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-bottom: 16px;">
-                Test your AI configuration by sending a message. This helps verify your API key and model settings are working correctly.
-            </FluentMessageBar>
-
-            <FluentTextArea @bind-Value="_testMessage"
-                           Label="Test Message"
-                           Rows="3"
-                           Placeholder="Enter a test message to send to the AI..."
-                           Style="width: 100%; margin-bottom: 16px;" />
-
-            <FluentButton Appearance="Appearance.Accent"
-                         OnClick="SendTestMessage"
-                         Disabled="_isTestingChat || string.IsNullOrWhiteSpace(_testMessage)">
-                @if (_isTestingChat)
-                {
-                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
-                }
-                Send Test Message
-            </FluentButton>
-
-            @if (!string.IsNullOrEmpty(_testResponse))
-            {
-                <FluentCard Style="margin-top: 16px; padding: 16px; background-color: var(--neutral-layer-2);">
-                    <strong style="display: block; margin-bottom: 8px;">AI Response:</strong>
-                    <div style="white-space: pre-wrap;">@_testResponse</div>
-                </FluentCard>
-            }
-        </FluentCard>
     </FluentTab>
 
     <FluentTab Label="RAG Settings" Id="rag-settings">
@@ -499,6 +579,90 @@
             <FluentProgressRing />
         }
     </FluentTab>
+
+    <FluentTab Label="Authentication" Id="auth-settings">
+        @if (_config != null)
+        {
+            <FluentCard Style="padding: 16px; margin-top: 16px;">
+                <FluentMessageBar Intent="@MessageIntent.Warning" Style="margin-bottom: 16px;">
+                    <strong>Requires Application Restart.</strong> Changes to authentication settings require restarting the application to take effect.
+                </FluentMessageBar>
+
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="12">
+                        <div>
+                            <label style="font-weight: 500; margin-bottom: 4px; display: block;">Authentication Mode</label>
+                            <select @bind="_config.AuthenticationMode" style="width: 100%; max-width: 300px; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                <option value="Local">Local (Username/Password)</option>
+                                <option value="Windows">Windows Authentication</option>
+                            </select>
+                        </div>
+                        <span style="font-size: 12px; color: gray;">Select how users authenticate to the application</span>
+                    </FluentGridItem>
+
+                    @if (_config.AuthenticationMode == "Windows")
+                    {
+                        <FluentGridItem xs="12">
+                            <hr style="border: none; border-top: 1px solid var(--neutral-stroke-rest); margin: 16px 0;" />
+                            <h5 style="margin: 0 0 12px 0;">Windows Authentication Options</h5>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12">
+                            <FluentCheckbox @bind-Value="_config.WindowsAuthAutoProvisionUsers"
+                                           Label="Auto-provision users on first login" />
+                            <div style="margin-left: 28px; font-size: 12px; color: gray; margin-top: 4px;">
+                                Automatically create user accounts when Windows users log in for the first time.
+                            </div>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <div>
+                                <label style="font-weight: 500; margin-bottom: 4px; display: block;">Default Role for New Users</label>
+                                <select @bind="_config.WindowsAuthDefaultRole" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                    <option value="User">User</option>
+                                    <option value="Admin">Admin</option>
+                                </select>
+                            </div>
+                            <span style="font-size: 12px; color: gray;">Role assigned to auto-provisioned Windows users</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12">
+                            <FluentTextField @bind-Value="_config.WindowsAuthAllowedDomains"
+                                            Label="Allowed Domains"
+                                            Placeholder="CORP;PARTNERS (leave blank to allow all)"
+                                            Style="width: 100%;" />
+                            <div style="font-size: 12px; color: gray; margin-top: 4px;">
+                                Restrict login to specific AD domains. Separate multiple domains with semicolons. Leave blank to allow all domains.
+                            </div>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12">
+                            <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-top: 8px;">
+                                <strong>AD Group Permissions:</strong> To map Active Directory groups to application roles or data source permissions,
+                                use the <a href="/admin/users">User Management</a> page.
+                            </FluentMessageBar>
+                        </FluentGridItem>
+                    }
+
+                    <FluentGridItem xs="12">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+                            <FluentButton Appearance="Appearance.Accent" OnClick="SaveAuthSettings" Disabled="_isSavingAuth">
+                                @if (_isSavingAuth)
+                                {
+                                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                }
+                                Save Authentication Settings
+                            </FluentButton>
+                        </div>
+                    </FluentGridItem>
+                </FluentGrid>
+            </FluentCard>
+        }
+        else
+        {
+            <FluentProgressRing />
+        }
+    </FluentTab>
 </FluentTabs>
 
 @code {
@@ -507,11 +671,14 @@
     private bool _showApiKey;
     private bool _hasExistingApiKey;
     private float _temperature = 0.7f;
-    private bool _isSaving;
     private bool _isTesting;
-    private bool _isTestingChat;
-    private string _testMessage = "Hello! Can you confirm you're working correctly?";
-    private string _testResponse = "";
+
+    // Test status display
+    private string _testStatus = "";
+    private bool _chatTestPassed;
+    private bool _embeddingTestPassed;
+    private string _chatTestResult = "";
+    private string _embeddingTestResult = "";
 
     // Azure OpenAI fields
     private string _azureApiKey = "";
@@ -530,6 +697,24 @@
     // RAG settings
     private bool _isSavingRag;
 
+    // Authentication settings
+    private bool _isSavingAuth;
+
+    // Status dashboard
+    private ConfigStatus _sqlStatus = ConfigStatus.Unknown;
+    private ConfigStatus _chatModelStatus = ConfigStatus.Unknown;
+    private ConfigStatus _embeddingModelStatus = ConfigStatus.Unknown;
+    private ConfigStatus _ragStatus = ConfigStatus.Unknown;
+    private ConfigStatus _authStatus = ConfigStatus.Unknown;
+    private string _sqlStatusMessage = "Checking...";
+    private string _chatModelStatusMessage = "Checking...";
+    private string _embeddingModelStatusMessage = "Checking...";
+    private string _ragStatusMessage = "Checking...";
+    private string _authStatusMessage = "Checking...";
+    private bool _isCheckingStatus;
+
+    private enum ConfigStatus { Unknown, Success, Warning, Error }
+
     // Model lists per provider
     private readonly string[] _openAiChatModels = { "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo" };
     private readonly string[] _openAiEmbeddingModels = { "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002" };
@@ -541,6 +726,8 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadConfiguration();
+        // Fire and forget - don't block page load
+        _ = CheckAllStatus();
     }
 
     private async Task LoadConfiguration()
@@ -590,7 +777,18 @@
             {
                 try
                 {
-                    builder.Password = SecureConfig.Decrypt(_config.SqlServerPassword);
+                    var decryptedPassword = SecureConfig.Decrypt(_config.SqlServerPassword);
+                    // If decryption failed silently (returned ciphertext), the value will be too long
+                    // SqlConnectionStringBuilder has a 128 char limit for passwords
+                    if (decryptedPassword.Length <= 128)
+                    {
+                        builder.Password = decryptedPassword;
+                    }
+                    else
+                    {
+                        // Decryption likely failed - password is still encrypted
+                        builder.Password = "";
+                    }
                 }
                 catch
                 {
@@ -692,21 +890,33 @@
         }
     }
 
-    private async Task SaveSettings()
+    private async Task TestAndSaveSettings()
     {
         if (_config == null) return;
 
-        _isSaving = true;
+        _isTesting = true;
+        _testStatus = "";
+        _chatTestPassed = false;
+        _embeddingTestPassed = false;
+        _chatTestResult = "";
+        _embeddingTestResult = "";
+
         try
         {
-            // Only update OpenAI API key if a new one was provided
+            // 1. Validate configuration based on provider
+            if (!ValidateConfiguration())
+                return;
+
+            // 2. Save configuration first (services read from DB)
+            _testStatus = "Saving configuration...";
+            StateHasChanged();
+
+            // Save API keys if provided
             if (!string.IsNullOrWhiteSpace(_apiKey))
             {
                 _config.OpenAiApiKey = SecureConfig.Encrypt(_apiKey);
                 _hasExistingApiKey = true;
             }
-
-            // Only update Azure API key if a new one was provided
             if (!string.IsNullOrWhiteSpace(_azureApiKey))
             {
                 _config.AzureOpenAiApiKey = SecureConfig.Encrypt(_azureApiKey);
@@ -715,119 +925,159 @@
 
             _config.Temperature = (decimal)_temperature;
             _config.UpdatedAt = DateTime.UtcNow;
-
             await DbContext.SaveChangesAsync();
-            ToastService.ShowSuccess("Settings saved successfully!");
 
-            // Clear the API key fields after saving
-            _apiKey = "";
-            _azureApiKey = "";
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to save configuration");
-            ToastService.ShowError($"Failed to save settings: {ex.Message}");
-        }
-        finally
-        {
-            _isSaving = false;
-        }
-    }
+            // 3. Test chat model
+            _testStatus = "Testing chat model...";
+            StateHasChanged();
 
-    private async Task TestConnection()
-    {
-        _isTesting = true;
-        try
-        {
-            if (_config == null) return;
-
-            switch (_config.LlmProvider)
+            try
             {
-                case LlmProvider.OpenAI:
-                    var apiKeyToTest = !string.IsNullOrWhiteSpace(_apiKey)
-                        ? _apiKey
-                        : (_config.OpenAiApiKey != null ? SecureConfig.Decrypt(_config.OpenAiApiKey) : null);
+                var chatService = AiServiceFactory.GetChatService();
+                var messages = new List<ChatMessageDto>
+                {
+                    new(Guid.NewGuid(), DataChat.Domain.Enums.MessageRole.User,
+                        "Hello! Can you confirm you're working correctly?",
+                        DateTime.UtcNow)
+                };
 
-                    if (string.IsNullOrWhiteSpace(apiKeyToTest))
-                    {
-                        ToastService.ShowWarning("Please enter an OpenAI API key first");
-                        return;
-                    }
+                var responseBuilder = new System.Text.StringBuilder();
+                await foreach (var chunk in chatService.StreamResponseAsync(messages, null, CancellationToken.None))
+                {
+                    responseBuilder.Append(chunk);
+                }
 
-                    if (!apiKeyToTest.StartsWith("sk-"))
-                    {
-                        ToastService.ShowWarning("OpenAI API key should start with 'sk-'");
-                        return;
-                    }
+                if (string.IsNullOrWhiteSpace(responseBuilder.ToString()))
+                    throw new Exception("Empty response received");
 
-                    await Task.Delay(500);
-                    ToastService.ShowSuccess("OpenAI API key format is valid. Use Test Chat to verify functionality.");
-                    break;
+                _chatTestPassed = true;
+                _chatTestResult = "Chat model responded successfully";
+            }
+            catch (Exception ex)
+            {
+                _chatTestResult = $"Chat test failed: {ex.Message}";
+                Logger.LogError(ex, "Chat model test failed");
+            }
 
-                case LlmProvider.AzureOpenAI:
-                    if (string.IsNullOrWhiteSpace(_config.AzureOpenAiEndpoint))
-                    {
-                        ToastService.ShowWarning("Please enter an Azure OpenAI endpoint");
-                        return;
-                    }
+            StateHasChanged();
 
-                    var azureKey = !string.IsNullOrWhiteSpace(_azureApiKey)
-                        ? _azureApiKey
-                        : (_config.AzureOpenAiApiKey != null ? SecureConfig.Decrypt(_config.AzureOpenAiApiKey) : null);
+            // 4. Test embedding model
+            _testStatus = "Testing embedding model...";
+            StateHasChanged();
 
-                    if (string.IsNullOrWhiteSpace(azureKey))
-                    {
-                        ToastService.ShowWarning("Please enter an Azure OpenAI API key");
-                        return;
-                    }
+            try
+            {
+                var embeddingService = AiServiceFactory.GetEmbeddingService();
+                var embedding = await embeddingService.GenerateEmbeddingAsync("Test embedding");
 
-                    if (string.IsNullOrWhiteSpace(_config.AzureOpenAiDeploymentName))
-                    {
-                        ToastService.ShowWarning("Please enter an Azure OpenAI chat deployment name");
-                        return;
-                    }
+                if (embedding == null || embedding.Length == 0)
+                    throw new Exception("Empty embedding received");
 
-                    await Task.Delay(500);
-                    ToastService.ShowSuccess("Azure OpenAI configuration looks valid. Use Test Chat to verify functionality.");
-                    break;
+                _embeddingTestPassed = true;
+                _embeddingTestResult = $"Embedding generated ({embedding.Length} dimensions)";
+            }
+            catch (Exception ex)
+            {
+                _embeddingTestResult = $"Embedding test failed: {ex.Message}";
+                Logger.LogError(ex, "Embedding model test failed");
+            }
 
-                case LlmProvider.Ollama:
-                    if (string.IsNullOrWhiteSpace(_config.OllamaEndpoint))
-                    {
-                        ToastService.ShowWarning("Please enter an Ollama endpoint");
-                        return;
-                    }
-
-                    // Try to reach the Ollama API
-                    try
-                    {
-                        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-                        var response = await httpClient.GetAsync($"{_config.OllamaEndpoint}/api/tags");
-                        if (response.IsSuccessStatusCode)
-                        {
-                            ToastService.ShowSuccess("Ollama is reachable! Use Test Chat to verify model functionality.");
-                        }
-                        else
-                        {
-                            ToastService.ShowWarning($"Ollama returned status {response.StatusCode}. Verify the endpoint is correct.");
-                        }
-                    }
-                    catch (HttpRequestException)
-                    {
-                        ToastService.ShowError("Cannot reach Ollama. Make sure Ollama is running and the endpoint is correct.");
-                    }
-                    break;
+            // 5. Show final status
+            if (_chatTestPassed && _embeddingTestPassed)
+            {
+                _testStatus = "All tests passed! Settings saved successfully.";
+                ToastService.ShowSuccess("Configuration saved and verified!");
+                _apiKey = "";
+                _azureApiKey = "";
+            }
+            else
+            {
+                _testStatus = "Some tests failed. Settings saved but may not work correctly.";
+                ToastService.ShowWarning("Settings saved but some tests failed. Please check the configuration.");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to test connection");
-            ToastService.ShowError($"Connection test failed: {ex.Message}");
+            _testStatus = $"Error: {ex.Message}";
+            Logger.LogError(ex, "Failed to test and save settings");
+            ToastService.ShowError($"Failed: {ex.Message}");
         }
         finally
         {
             _isTesting = false;
         }
+    }
+
+    private bool ValidateConfiguration()
+    {
+        if (_config == null) return false;
+
+        switch (_config.LlmProvider)
+        {
+            case LlmProvider.OpenAI:
+                var apiKeyToTest = !string.IsNullOrWhiteSpace(_apiKey)
+                    ? _apiKey
+                    : (_config.OpenAiApiKey != null ? SecureConfig.Decrypt(_config.OpenAiApiKey) : null);
+
+                if (string.IsNullOrWhiteSpace(apiKeyToTest))
+                {
+                    ToastService.ShowWarning("Please enter an OpenAI API key first");
+                    return false;
+                }
+                break;
+
+            case LlmProvider.AzureOpenAI:
+                if (string.IsNullOrWhiteSpace(_config.AzureOpenAiEndpoint))
+                {
+                    ToastService.ShowWarning("Please enter an Azure OpenAI endpoint");
+                    return false;
+                }
+
+                var azureKey = !string.IsNullOrWhiteSpace(_azureApiKey)
+                    ? _azureApiKey
+                    : (_config.AzureOpenAiApiKey != null ? SecureConfig.Decrypt(_config.AzureOpenAiApiKey) : null);
+
+                if (string.IsNullOrWhiteSpace(azureKey))
+                {
+                    ToastService.ShowWarning("Please enter an Azure OpenAI API key");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(_config.AzureOpenAiDeploymentName))
+                {
+                    ToastService.ShowWarning("Please enter an Azure OpenAI chat deployment name");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(_config.AzureOpenAiEmbeddingDeployment))
+                {
+                    ToastService.ShowWarning("Please enter an Azure OpenAI embedding deployment name");
+                    return false;
+                }
+                break;
+
+            case LlmProvider.Ollama:
+                if (string.IsNullOrWhiteSpace(_config.OllamaEndpoint))
+                {
+                    ToastService.ShowWarning("Please enter an Ollama endpoint");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(_config.OllamaModel))
+                {
+                    ToastService.ShowWarning("Please enter an Ollama chat model");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(_config.OllamaEmbeddingModel))
+                {
+                    ToastService.ShowWarning("Please enter an Ollama embedding model");
+                    return false;
+                }
+                break;
+        }
+
+        return true;
     }
 
     private async Task FetchOllamaModels()
@@ -904,78 +1154,6 @@
         }
     }
 
-    private async Task SendTestMessage()
-    {
-        _isTestingChat = true;
-        _testResponse = "";
-
-        try
-        {
-            if (_config == null)
-            {
-                ToastService.ShowWarning("Configuration not loaded");
-                return;
-            }
-
-            // Validate provider-specific configuration
-            switch (_config.LlmProvider)
-            {
-                case LlmProvider.OpenAI:
-                    if (string.IsNullOrWhiteSpace(_config.OpenAiApiKey))
-                    {
-                        ToastService.ShowWarning("Please save an OpenAI API key first");
-                        return;
-                    }
-                    break;
-                case LlmProvider.AzureOpenAI:
-                    if (string.IsNullOrWhiteSpace(_config.AzureOpenAiApiKey) ||
-                        string.IsNullOrWhiteSpace(_config.AzureOpenAiEndpoint) ||
-                        string.IsNullOrWhiteSpace(_config.AzureOpenAiDeploymentName))
-                    {
-                        ToastService.ShowWarning("Please configure and save Azure OpenAI settings first");
-                        return;
-                    }
-                    break;
-                case LlmProvider.Ollama:
-                    if (string.IsNullOrWhiteSpace(_config.OllamaEndpoint) ||
-                        string.IsNullOrWhiteSpace(_config.OllamaModel))
-                    {
-                        ToastService.ShowWarning("Please configure and save Ollama settings first");
-                        return;
-                    }
-                    break;
-            }
-
-            // Get a fresh chat service from the factory to use the currently saved provider
-            var chatService = AiServiceFactory.GetChatService();
-
-            var messages = new List<ChatMessageDto>
-            {
-                new(Guid.NewGuid(), DataChat.Domain.Enums.MessageRole.User, _testMessage, DateTime.UtcNow)
-            };
-
-            var responseBuilder = new System.Text.StringBuilder();
-            await foreach (var chunk in chatService.StreamResponseAsync(messages, null, CancellationToken.None))
-            {
-                responseBuilder.Append(chunk);
-                _testResponse = responseBuilder.ToString();
-                StateHasChanged();
-            }
-
-            ToastService.ShowSuccess("Test message successful!");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to send test message");
-            _testResponse = $"Error: {ex.Message}";
-            ToastService.ShowError($"Test failed: {ex.Message}");
-        }
-        finally
-        {
-            _isTestingChat = false;
-        }
-    }
-
     private async Task SaveRagSettings()
     {
         if (_config == null) return;
@@ -995,6 +1173,244 @@
         finally
         {
             _isSavingRag = false;
+        }
+    }
+
+    private async Task SaveAuthSettings()
+    {
+        if (_config == null) return;
+
+        _isSavingAuth = true;
+        try
+        {
+            _config.UpdatedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            ToastService.ShowSuccess("Authentication settings saved. Restart the application for changes to take effect.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save authentication configuration");
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _isSavingAuth = false;
+        }
+    }
+
+    // Status Dashboard Methods
+    private RenderFragment RenderStatusIcon(ConfigStatus status) => status switch
+    {
+        ConfigStatus.Success => @<FluentIcon Value="@(new Icons.Filled.Size24.CheckmarkCircle())" Color="Color.Success" />,
+        ConfigStatus.Warning => @<FluentIcon Value="@(new Icons.Filled.Size24.Warning())" Color="Color.Warning" />,
+        ConfigStatus.Error => @<FluentIcon Value="@(new Icons.Filled.Size24.DismissCircle())" Color="Color.Error" />,
+        _ => @<FluentIcon Value="@(new Icons.Filled.Size24.QuestionCircle())" Color="Color.Neutral" />
+    };
+
+    private async Task CheckAllStatus()
+    {
+        _isCheckingStatus = true;
+        StateHasChanged();
+
+        try
+        {
+            await CheckSqlStatus();
+            StateHasChanged();
+
+            await CheckChatModelStatus();
+            StateHasChanged();
+
+            await CheckEmbeddingModelStatus();
+            StateHasChanged();
+
+            CheckRagStatus();
+            StateHasChanged();
+
+            CheckAuthStatus();
+        }
+        finally
+        {
+            _isCheckingStatus = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CheckSqlStatus()
+    {
+        if (string.IsNullOrWhiteSpace(_config?.SqlServerHost))
+        {
+            _sqlStatus = ConfigStatus.Error;
+            _sqlStatusMessage = "Not configured";
+            return;
+        }
+
+        try
+        {
+            var connectionString = BuildSqlConnectionString();
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            await using var cmd = new SqlCommand("SELECT @@VERSION", connection);
+            var version = (await cmd.ExecuteScalarAsync())?.ToString() ?? "";
+
+            if (version.Contains("2025") || version.Contains("2026") || version.Contains("2027"))
+            {
+                _sqlStatus = ConfigStatus.Success;
+                _sqlStatusMessage = "Connected (SQL Server 2025+)";
+            }
+            else
+            {
+                _sqlStatus = ConfigStatus.Warning;
+                _sqlStatusMessage = "Connected but may lack VECTOR support";
+            }
+        }
+        catch (Exception ex)
+        {
+            _sqlStatus = ConfigStatus.Error;
+            var msg = ex.Message;
+            _sqlStatusMessage = msg.Length > 60 ? msg[..60] + "..." : msg;
+        }
+    }
+
+    private async Task CheckChatModelStatus()
+    {
+        if (_config == null)
+        {
+            _chatModelStatus = ConfigStatus.Error;
+            _chatModelStatusMessage = "Configuration not loaded";
+            return;
+        }
+
+        var hasCredentials = _config.LlmProvider switch
+        {
+            LlmProvider.OpenAI => !string.IsNullOrEmpty(_config.OpenAiApiKey),
+            LlmProvider.AzureOpenAI => !string.IsNullOrEmpty(_config.AzureOpenAiApiKey)
+                                       && !string.IsNullOrEmpty(_config.AzureOpenAiEndpoint)
+                                       && !string.IsNullOrEmpty(_config.AzureOpenAiDeploymentName),
+            LlmProvider.Ollama => !string.IsNullOrEmpty(_config.OllamaEndpoint)
+                                  && !string.IsNullOrEmpty(_config.OllamaModel),
+            _ => false
+        };
+
+        if (!hasCredentials)
+        {
+            _chatModelStatus = ConfigStatus.Error;
+            _chatModelStatusMessage = "Not configured";
+            return;
+        }
+
+        try
+        {
+            var chatService = AiServiceFactory.GetChatService();
+            var messages = new List<ChatMessageDto>
+            {
+                new(Guid.NewGuid(), DataChat.Domain.Enums.MessageRole.User, "Hi", DateTime.UtcNow)
+            };
+
+            var response = new System.Text.StringBuilder();
+            await foreach (var chunk in chatService.StreamResponseAsync(messages, null, CancellationToken.None))
+            {
+                response.Append(chunk);
+                if (response.Length > 10) break;
+            }
+
+            _chatModelStatus = ConfigStatus.Success;
+            _chatModelStatusMessage = "Working";
+        }
+        catch (Exception ex)
+        {
+            _chatModelStatus = ConfigStatus.Error;
+            var msg = ex.Message;
+            _chatModelStatusMessage = msg.Length > 60 ? msg[..60] + "..." : msg;
+        }
+    }
+
+    private async Task CheckEmbeddingModelStatus()
+    {
+        if (_config == null)
+        {
+            _embeddingModelStatus = ConfigStatus.Error;
+            _embeddingModelStatusMessage = "Configuration not loaded";
+            return;
+        }
+
+        var hasEmbeddingConfig = _config.LlmProvider switch
+        {
+            LlmProvider.OpenAI => !string.IsNullOrEmpty(_config.OpenAiApiKey),
+            LlmProvider.AzureOpenAI => !string.IsNullOrEmpty(_config.AzureOpenAiApiKey)
+                                       && !string.IsNullOrEmpty(_config.AzureOpenAiEmbeddingDeployment),
+            LlmProvider.Ollama => !string.IsNullOrEmpty(_config.OllamaEndpoint)
+                                  && !string.IsNullOrEmpty(_config.OllamaEmbeddingModel),
+            _ => false
+        };
+
+        if (!hasEmbeddingConfig)
+        {
+            _embeddingModelStatus = ConfigStatus.Error;
+            _embeddingModelStatusMessage = "Not configured";
+            return;
+        }
+
+        try
+        {
+            var embeddingService = AiServiceFactory.GetEmbeddingService();
+            var embedding = await embeddingService.GenerateEmbeddingAsync("test");
+
+            _embeddingModelStatus = ConfigStatus.Success;
+            _embeddingModelStatusMessage = $"Working ({embedding.Length} dimensions)";
+        }
+        catch (Exception ex)
+        {
+            _embeddingModelStatus = ConfigStatus.Error;
+            var msg = ex.Message;
+            _embeddingModelStatusMessage = msg.Length > 60 ? msg[..60] + "..." : msg;
+        }
+    }
+
+    private void CheckRagStatus()
+    {
+        if (_config == null)
+        {
+            _ragStatus = ConfigStatus.Error;
+            _ragStatusMessage = "Configuration not loaded";
+            return;
+        }
+
+        if (_config.EnableSourcePreview && (_config.EnableDocumentPreview || _config.EnableDocumentDownload))
+        {
+            _ragStatus = ConfigStatus.Success;
+            _ragStatusMessage = "Source preview and document access enabled";
+        }
+        else if (_config.EnableSourcePreview || _config.EnableDocumentPreview || _config.EnableDocumentDownload)
+        {
+            _ragStatus = ConfigStatus.Warning;
+            _ragStatusMessage = "Partially configured";
+        }
+        else
+        {
+            _ragStatus = ConfigStatus.Warning;
+            _ragStatusMessage = "All access features disabled";
+        }
+    }
+
+    private void CheckAuthStatus()
+    {
+        if (_config == null)
+        {
+            _authStatus = ConfigStatus.Error;
+            _authStatusMessage = "Configuration not loaded";
+            return;
+        }
+
+        if (_config.AuthenticationMode == "Windows")
+        {
+            _authStatus = ConfigStatus.Success;
+            _authStatusMessage = $"Windows Authentication{(_config.WindowsAuthAutoProvisionUsers ? " (auto-provision)" : "")}";
+        }
+        else
+        {
+            _authStatus = ConfigStatus.Success;
+            _authStatusMessage = "Local (Username/Password)";
         }
     }
 }

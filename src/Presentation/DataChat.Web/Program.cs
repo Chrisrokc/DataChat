@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.SqlClient;
 using Microsoft.FluentUI.AspNetCore.Components;
 using Serilog;
 
@@ -48,8 +49,57 @@ try
         .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
 
     // Configure Authentication based on settings
-    var authMode = builder.Configuration.GetValue<string>("Authentication:Mode") ?? "Local";
+    // First try to read from database, then fall back to appsettings.json
+    var authMode = "Local";
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrEmpty(connectionString))
+    {
+        try
+        {
+            using var connection = new SqlConnection(connectionString);
+            connection.Open();
+            using var cmd = new SqlCommand("SELECT TOP 1 AuthenticationMode FROM SystemConfiguration WHERE Id = 1", connection);
+            var result = cmd.ExecuteScalar();
+            if (result != null && result != DBNull.Value)
+            {
+                authMode = result.ToString() ?? "Local";
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not read authentication mode from database, using appsettings configuration");
+            authMode = builder.Configuration.GetValue<string>("Authentication:Mode") ?? "Local";
+        }
+    }
+    else
+    {
+        authMode = builder.Configuration.GetValue<string>("Authentication:Mode") ?? "Local";
+    }
+
     var windowsAuthEnabled = builder.Configuration.GetValue<bool>("Authentication:WindowsAuth:Enabled");
+    string? windowsAuthAllowedDomains = null;
+
+    // Read domain restrictions for Windows auth
+    if ((authMode == "Windows" || windowsAuthEnabled) && !string.IsNullOrEmpty(connectionString))
+    {
+        try
+        {
+            using var connection = new SqlConnection(connectionString);
+            connection.Open();
+            using var cmd = new SqlCommand("SELECT TOP 1 WindowsAuthAllowedDomains FROM SystemConfiguration WHERE Id = 1", connection);
+            var result = cmd.ExecuteScalar();
+            if (result != null && result != DBNull.Value)
+            {
+                windowsAuthAllowedDomains = result.ToString();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not read Windows auth allowed domains from database");
+        }
+    }
+
+    Log.Information("Authentication mode: {AuthMode}", authMode);
 
     if (authMode == "Windows" || windowsAuthEnabled)
     {
@@ -141,6 +191,54 @@ try
             context.User?.Identity?.Name ?? "null");
         await next();
     });
+
+    // Windows Auth domain validation middleware
+    if ((authMode == "Windows" || windowsAuthEnabled) && !string.IsNullOrEmpty(windowsAuthAllowedDomains))
+    {
+        var allowedDomains = windowsAuthAllowedDomains
+            .Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => d.Trim().ToUpperInvariant())
+            .ToHashSet();
+
+        if (allowedDomains.Any())
+        {
+            Log.Information("Windows Auth domain restrictions enabled. Allowed domains: {Domains}", string.Join(", ", allowedDomains));
+
+            app.Use(async (context, next) =>
+            {
+                // Only check authenticated users with Windows identity (DOMAIN\username format)
+                var identityName = context.User?.Identity?.Name;
+                if (context.User?.Identity?.IsAuthenticated == true &&
+                    !string.IsNullOrEmpty(identityName) &&
+                    identityName.Contains('\\'))
+                {
+                    var userDomain = identityName.Split('\\')[0].ToUpperInvariant();
+                    if (!allowedDomains.Contains(userDomain))
+                    {
+                        Log.Warning("Windows Auth domain rejected: User {User} from domain {Domain} not in allowed list",
+                            identityName, userDomain);
+
+                        // Return 403 Forbidden with a message
+                        context.Response.StatusCode = 403;
+                        context.Response.ContentType = "text/html";
+                        await context.Response.WriteAsync($@"
+                            <!DOCTYPE html>
+                            <html>
+                            <head><title>Access Denied</title></head>
+                            <body style='font-family: system-ui, sans-serif; padding: 40px; text-align: center;'>
+                                <h1>Access Denied</h1>
+                                <p>Your domain ({userDomain}) is not authorized to access this application.</p>
+                                <p>Please contact your administrator if you believe this is an error.</p>
+                            </body>
+                            </html>");
+                        return;
+                    }
+                }
+
+                await next();
+            });
+        }
+    }
 
     app.UseAuthorization();
 

@@ -149,13 +149,26 @@ public class OllamaChatService : IAiChatService
                 foreach (var attachment in msg.Attachments)
                 {
                     // Ollama doesn't support native image/document attachments via API
-                    // For text-based attachments, extract and include the content
+                    // For text-based and Excel attachments, extract and include the content
                     if (IsTextBasedMimeType(attachment.MimeType))
                     {
                         try
                         {
                             var bytes = Convert.FromBase64String(attachment.Base64Data);
                             var text = Encoding.UTF8.GetString(bytes);
+                            attachmentTexts.AppendLine($"\n\n--- Content from attached file: {attachment.FileName} ---\n{text}\n--- End of {attachment.FileName} ---");
+                        }
+                        catch
+                        {
+                            attachmentTexts.AppendLine($"\n\n[Attachment: {attachment.FileName} - unable to extract content]");
+                        }
+                    }
+                    else if (IsExcelMimeType(attachment.MimeType))
+                    {
+                        try
+                        {
+                            var bytes = Convert.FromBase64String(attachment.Base64Data);
+                            var text = ExtractExcelText(bytes, attachment.FileName);
                             attachmentTexts.AppendLine($"\n\n--- Content from attached file: {attachment.FileName} ---\n{text}\n--- End of {attachment.FileName} ---");
                         }
                         catch
@@ -186,6 +199,87 @@ public class OllamaChatService : IAiChatService
             "application/json" => true,
             _ => false
         };
+
+    private static bool IsExcelMimeType(string mimeType) =>
+        mimeType.ToLowerInvariant() switch
+        {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => true,
+            "application/vnd.ms-excel" => true,
+            _ => false
+        };
+
+    private static string ExtractExcelText(byte[] bytes, string fileName)
+    {
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
+            var sb = new StringBuilder();
+
+            sb.AppendLine($"Excel Workbook: {fileName}");
+            sb.AppendLine($"Sheets: {workbook.Worksheets.Count}");
+            sb.AppendLine(new string('=', 50));
+
+            foreach (var worksheet in workbook.Worksheets)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"Sheet: {worksheet.Name}");
+                sb.AppendLine(new string('-', 40));
+
+                var usedRange = worksheet.RangeUsed();
+                if (usedRange == null)
+                {
+                    sb.AppendLine("[Empty sheet]");
+                    continue;
+                }
+
+                var firstRow = usedRange.FirstRow().RowNumber();
+                var lastRow = Math.Min(usedRange.LastRow().RowNumber(), firstRow + 499);
+                var firstCol = usedRange.FirstColumn().ColumnNumber();
+                var lastCol = usedRange.LastColumn().ColumnNumber();
+
+                var headers = new List<string>();
+                for (int col = firstCol; col <= lastCol; col++)
+                {
+                    var cell = worksheet.Cell(firstRow, col);
+                    headers.Add(cell.GetString().Trim());
+                }
+
+                var rowCount = 0;
+                for (int row = firstRow + 1; row <= lastRow; row++)
+                {
+                    sb.AppendLine($"Row {rowCount + 1}:");
+
+                    for (int col = firstCol; col <= lastCol; col++)
+                    {
+                        var cell = worksheet.Cell(row, col);
+                        var value = cell.GetString().Trim();
+                        var headerIndex = col - firstCol;
+                        var header = headerIndex < headers.Count ? headers[headerIndex] : $"Column{col}";
+
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            sb.AppendLine($"  {header}: {value}");
+                        }
+                    }
+
+                    sb.AppendLine();
+                    rowCount++;
+                }
+
+                if (usedRange.LastRow().RowNumber() > lastRow)
+                {
+                    sb.AppendLine($"[Note: Showing first 500 of {usedRange.LastRow().RowNumber() - firstRow} total rows]");
+                }
+            }
+
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"[Unable to parse Excel file {fileName}: {ex.Message}]";
+        }
+    }
 }
 
 // Ollama API DTOs

@@ -3,6 +3,7 @@ using DataChat.Domain.Enums;
 using DataChat.Infrastructure.AI.AzureOpenAI;
 using DataChat.Infrastructure.AI.Ollama;
 using DataChat.Infrastructure.AI.OpenAI;
+using DataChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,16 +19,16 @@ public interface IAiServiceFactory
 public class AiServiceFactory : IAiServiceFactory
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly ILogger<AiServiceFactory> _logger;
 
     public AiServiceFactory(
         IServiceProvider serviceProvider,
-        IApplicationDbContext dbContext,
+        IDbContextFactory<ApplicationDbContext> dbContextFactory,
         ILogger<AiServiceFactory> logger)
     {
         _serviceProvider = serviceProvider;
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
         _logger = logger;
     }
 
@@ -63,7 +64,10 @@ public class AiServiceFactory : IAiServiceFactory
 
     private LlmProvider GetConfiguredProvider()
     {
-        var config = _dbContext.SystemConfiguration
+        // Use a fresh DbContext instance to avoid disposed context issues
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var config = dbContext.SystemConfiguration
             .AsNoTracking()
             .FirstOrDefault();
 

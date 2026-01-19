@@ -176,6 +176,8 @@ public class OpenAiChatService : IAiChatService
             "text/csv" => true,
             "text/markdown" => true,
             "application/json" => true,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => true, // XLSX
+            "application/vnd.ms-excel" => true, // XLS
             _ => false
         };
 
@@ -184,12 +186,96 @@ public class OpenAiChatService : IAiChatService
         try
         {
             var bytes = Convert.FromBase64String(attachment.Base64Data);
+            var mimeType = attachment.MimeType.ToLowerInvariant();
+
+            // Handle Excel files
+            if (mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+                mimeType == "application/vnd.ms-excel")
+            {
+                return ExtractExcelText(bytes, attachment.FileName);
+            }
+
             // For text-based files, just decode as UTF-8
             return Encoding.UTF8.GetString(bytes);
         }
         catch
         {
             return $"[Unable to extract text from {attachment.FileName}]";
+        }
+    }
+
+    private static string ExtractExcelText(byte[] bytes, string fileName)
+    {
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
+            var sb = new StringBuilder();
+
+            sb.AppendLine($"Excel Workbook: {fileName}");
+            sb.AppendLine($"Sheets: {workbook.Worksheets.Count}");
+            sb.AppendLine(new string('=', 50));
+
+            foreach (var worksheet in workbook.Worksheets)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"Sheet: {worksheet.Name}");
+                sb.AppendLine(new string('-', 40));
+
+                var usedRange = worksheet.RangeUsed();
+                if (usedRange == null)
+                {
+                    sb.AppendLine("[Empty sheet]");
+                    continue;
+                }
+
+                var firstRow = usedRange.FirstRow().RowNumber();
+                var lastRow = Math.Min(usedRange.LastRow().RowNumber(), firstRow + 499); // Limit to 500 rows per sheet for chat
+                var firstCol = usedRange.FirstColumn().ColumnNumber();
+                var lastCol = usedRange.LastColumn().ColumnNumber();
+
+                // Get headers from first row
+                var headers = new List<string>();
+                for (int col = firstCol; col <= lastCol; col++)
+                {
+                    var cell = worksheet.Cell(firstRow, col);
+                    headers.Add(cell.GetString().Trim());
+                }
+
+                // Process data rows
+                var rowCount = 0;
+                for (int row = firstRow + 1; row <= lastRow; row++)
+                {
+                    sb.AppendLine($"Row {rowCount + 1}:");
+
+                    for (int col = firstCol; col <= lastCol; col++)
+                    {
+                        var cell = worksheet.Cell(row, col);
+                        var value = cell.GetString().Trim();
+                        var headerIndex = col - firstCol;
+                        var header = headerIndex < headers.Count ? headers[headerIndex] : $"Column{col}";
+
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            sb.AppendLine($"  {header}: {value}");
+                        }
+                    }
+
+                    sb.AppendLine();
+                    rowCount++;
+                }
+
+                if (usedRange.LastRow().RowNumber() > lastRow)
+                {
+                    sb.AppendLine($"[Note: Showing first 500 of {usedRange.LastRow().RowNumber() - firstRow} total rows]");
+                }
+            }
+
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"[Unable to parse Excel file {fileName}: {ex.Message}]";
         }
     }
 

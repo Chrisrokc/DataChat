@@ -64,6 +64,12 @@ public class SystemConfiguration
     public int SourcePreviewMinRelevance { get; set; } = 0; // Minimum relevance % to show in source preview (0-100, 0 = show all)
     public int SourcePreviewMaxSources { get; set; } = 5; // Maximum number of sources to display (1-10)
 
+    // Authentication Settings
+    public string AuthenticationMode { get; set; } = "Local"; // "Local" or "Windows"
+    public bool WindowsAuthAutoProvisionUsers { get; set; } = true; // Auto-create users on first Windows auth login
+    public string WindowsAuthDefaultRole { get; set; } = "User"; // Default role for auto-provisioned users
+    public string? WindowsAuthAllowedDomains { get; set; } // Semicolon-delimited, e.g., "CORP;PARTNERS" (empty = allow all)
+
     public DateTime? UpdatedAt { get; set; }
     public string? UpdatedBy { get; set; }
 }
