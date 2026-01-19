@@ -29,7 +29,10 @@
     @* Data Sources Tab *@
     <FluentCard Style="padding: 16px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h6>Manage Data Sources</h6>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <h6 style="margin: 0;">Manage Data Sources</h6>
+                <FluentCheckbox @bind-Value="_showPersonalSources" Label="Show personal sources" />
+            </div>
             <FluentButton Appearance="Appearance.Accent" OnClick="OpenAddDataSourceDialog">
                 Add Data Source
             </FluentButton>
@@ -47,18 +50,29 @@
         }
         else
         {
-            <FluentDataGrid Items="@_dataSources.AsQueryable()" TGridItem="DataSource" Style="width: 100%;">
+            <FluentDataGrid Items="@FilteredDataSources.AsQueryable()" TGridItem="DataSource" Style="width: 100%;">
                 <TemplateColumn Title="Name">
                     <strong>@context.Name</strong>
                     @if (!string.IsNullOrEmpty(context.Description))
                     {
                         <br /><span style="font-size: 12px; color: gray;">@context.Description</span>
                     }
+                    @if (context.OwnerUserId.HasValue)
+                    {
+                        <br /><span style="font-size: 11px; color: #888;">Owner: @GetOwnerName(context.OwnerUserId.Value)</span>
+                    }
                 </TemplateColumn>
                 <TemplateColumn Title="Type">
-                    <FluentBadge Appearance="@(context.Type == DataSourceType.FileSystem ? Appearance.Accent : Appearance.Neutral)">
-                        @context.Type.ToString()
-                    </FluentBadge>
+                    @if (context.OwnerUserId.HasValue)
+                    {
+                        <FluentBadge BackgroundColor="#5c2d91" Color="white">Personal</FluentBadge>
+                    }
+                    else
+                    {
+                        <FluentBadge Appearance="@(context.Type == DataSourceType.FileSystem ? Appearance.Accent : Appearance.Neutral)">
+                            @context.Type.ToString()
+                        </FluentBadge>
+                    }
                 </TemplateColumn>
                 <TemplateColumn Title="Path/Connection">
                     <code style="font-size: 12px;">@GetPathDisplay(context)</code>
@@ -445,6 +459,12 @@ else
     private bool _isSavingDataSource;
     private DataSourceEditModel _dataSourceModel = new();
     private Guid? _editingDataSourceId;
+    private bool _showPersonalSources;
+    private Dictionary<Guid, string> _userNames = new();
+
+    private IEnumerable<DataSource> FilteredDataSources => _showPersonalSources
+        ? _dataSources
+        : _dataSources.Where(d => !d.OwnerUserId.HasValue);
 
     // Database connection related fields for data source dialog
     private List<DatabaseConnection> _availableConnections = new();
@@ -483,8 +503,14 @@ else
                 .Include(ds => ds.SqlViewDataSource)
                     .ThenInclude(s => s!.DatabaseConnection)
                 .Include(ds => ds.Documents)
+                .Include(ds => ds.Owner)
                 .OrderBy(ds => ds.Name)
                 .ToListAsync();
+
+            // Cache owner names for display
+            _userNames = _dataSources
+                .Where(d => d.OwnerUserId.HasValue && d.Owner != null)
+                .ToDictionary(d => d.OwnerUserId!.Value, d => d.Owner!.DisplayName);
         }
         catch (Exception ex)
         {
@@ -495,6 +521,11 @@ else
         {
             _isLoading = false;
         }
+    }
+
+    private string GetOwnerName(Guid userId)
+    {
+        return _userNames.TryGetValue(userId, out var name) ? name : "Unknown";
     }
 
     private string GetPathDisplay(DataSource ds)

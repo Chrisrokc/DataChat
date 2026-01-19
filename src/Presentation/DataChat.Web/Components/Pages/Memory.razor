@@ -1,10 +1,12 @@
 @page "/memory"
 @attribute [Authorize]
 @using DataChat.Domain.Entities
+@using DataChat.Domain.Enums
 @inject IApplicationDbContext DbContext
 @inject ICurrentUserService CurrentUser
 @inject IDateTimeService DateTimeService
 @inject IToastService ToastService
+@inject IPersonalDocumentService PersonalDocService
 
 <PageTitle>Memory & Preferences</PageTitle>
 
@@ -106,6 +108,119 @@
             </ul>
         </div>
     }
+
+    @* My Documents Section *@
+    <div style="margin-top: 40px; border-top: 1px solid var(--neutral-stroke-rest); padding-top: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+                <h4 style="margin: 0;">My Documents</h4>
+                <p style="color: #666; margin: 8px 0 0 0; font-size: 14px;">
+                    Upload documents for your personal knowledge base. The AI can search these when you ask questions.
+                </p>
+            </div>
+        </div>
+
+        @* Upload Area *@
+        <div class="upload-drop-zone @(_isDragOver ? "drag-over" : "")"
+             @ondragenter="HandleDragEnter"
+             @ondragleave="HandleDragLeave"
+             @ondragover="HandleDragOver"
+             @ondragover:preventDefault
+             @ondrop="HandleDrop"
+             @ondrop:preventDefault>
+            <InputFile OnChange="HandleFileSelected" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.xlsx,.csv" multiple id="personalDocInput" style="display: none;" />
+            <label for="personalDocInput" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="#0078d4">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                </svg>
+                <div style="text-align: center;">
+                    <div style="font-size: 14px; font-weight: 500;">Drop files here or click to upload</div>
+                    <div style="font-size: 12px; color: #888; margin-top: 4px;">
+                        PDF, Word, Text, Images, Excel/CSV (max @FormatFileSize(PersonalDocService.GetMaxFileSize()) each)
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        @* Upload Progress *@
+        @if (_isUploading)
+        {
+            <div style="margin-top: 16px; padding: 16px; background: var(--neutral-layer-2); border-radius: 8px; display: flex; align-items: center; gap: 12px;">
+                <FluentProgressRing Style="width: 24px; height: 24px;" />
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">Uploading and processing...</div>
+                    <div style="font-size: 12px; color: #888;">@_uploadingFileName</div>
+                </div>
+            </div>
+        }
+
+        @* Storage Usage *@
+        <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
+            <div style="flex: 1; height: 8px; background: var(--neutral-layer-3); border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; background: @GetStorageColor(); width: @GetStoragePercent()%; transition: width 0.3s;"></div>
+            </div>
+            <div style="font-size: 12px; color: #666; white-space: nowrap;">
+                @FormatFileSize(_storageUsed) / @FormatFileSize(PersonalDocService.GetStorageLimit())
+            </div>
+        </div>
+
+        @* Document List *@
+        @if (_isLoadingDocs)
+        {
+            <div style="margin-top: 24px;">
+                <FluentProgress />
+            </div>
+        }
+        else if (!_personalDocuments.Any())
+        {
+            <div style="margin-top: 24px; padding: 32px; text-align: center; background: var(--neutral-layer-2); border-radius: 8px;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="#ccc" style="margin-bottom: 12px;">
+                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                </svg>
+                <div style="font-size: 14px; color: #666;">No documents uploaded yet</div>
+                <div style="font-size: 12px; color: #888; margin-top: 4px;">Upload documents to create your personal knowledge base</div>
+            </div>
+        }
+        else
+        {
+            <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 8px;">
+                @foreach (var doc in _personalDocuments)
+                {
+                    <div class="document-item" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--neutral-layer-2); border-radius: 8px;">
+                        <div style="flex-shrink: 0;">
+                            @GetFileIcon(doc.MimeType)
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                @doc.FileName
+                            </div>
+                            <div style="font-size: 11px; color: #888; display: flex; gap: 8px; align-items: center; margin-top: 2px;">
+                                <span>@FormatFileSize(doc.FileSize)</span>
+                                <span style="color: #ccc;">|</span>
+                                <span>@FormatTimeAgo(doc.CreatedAt)</span>
+                                <span style="color: #ccc;">|</span>
+                                @if (doc.Status == DocumentStatus.Indexed)
+                                {
+                                    <span style="color: #107c10;">Ready</span>
+                                }
+                                else if (doc.Status == DocumentStatus.Processing || doc.Status == DocumentStatus.Pending)
+                                {
+                                    <span style="color: #ffb900;">Processing...</span>
+                                }
+                                else if (doc.Status == DocumentStatus.Failed)
+                                {
+                                    <span style="color: #d13438;">Failed</span>
+                                }
+                            </div>
+                        </div>
+                        <FluentButton Appearance="Appearance.Stealth" OnClick="() => DeleteDocument(doc)" Title="Delete" Disabled="@_isDeleting">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="#d13438"><path d="M8.5 4h3a1.5 1.5 0 00-3 0zm-1 0a2.5 2.5 0 015 0h5a.5.5 0 010 1h-1.054l-1.194 10.344A3 3 0 0112.272 18H7.728a3 3 0 01-2.98-2.656L3.554 5H2.5a.5.5 0 010-1h5z"/></svg>
+                        </FluentButton>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 </div>
 
 @* Add/Edit Memory Dialog *@
@@ -155,6 +270,21 @@
     .memory-item:hover {
         background: var(--neutral-layer-3) !important;
     }
+    .upload-drop-zone {
+        border: 2px dashed var(--neutral-stroke-rest);
+        border-radius: 12px;
+        padding: 32px;
+        text-align: center;
+        transition: all 0.2s ease;
+        background: var(--neutral-layer-1);
+    }
+    .upload-drop-zone:hover, .upload-drop-zone.drag-over {
+        border-color: #0078d4;
+        background: rgba(0, 120, 212, 0.05);
+    }
+    .document-item:hover {
+        background: var(--neutral-layer-3) !important;
+    }
 </style>
 
 @code {
@@ -170,9 +300,20 @@
     private string _dialogContent = "";
     private bool _dialogHighPriority;
 
+    // Document state
+    private List<Document> _personalDocuments = new();
+    private bool _isLoadingDocs = true;
+    private bool _isUploading;
+    private bool _isDeleting;
+    private bool _isDragOver;
+    private string _uploadingFileName = "";
+    private long _storageUsed;
+
     protected override async Task OnInitializedAsync()
     {
+        // Run sequentially to avoid DbContext concurrency issues
         await LoadMemories();
+        await LoadPersonalDocuments();
     }
 
     private async Task LoadMemories()
@@ -358,5 +499,152 @@
         if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
         if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
         return dateTime.ToString("MMM d, yyyy");
+    }
+
+    // Document methods
+    private async Task LoadPersonalDocuments()
+    {
+        try
+        {
+            _isLoadingDocs = true;
+            var userId = CurrentUser.UserId;
+            if (userId != null)
+            {
+                _personalDocuments = (await PersonalDocService.GetUserDocumentsAsync(userId.Value)).ToList();
+                _storageUsed = await PersonalDocService.GetStorageUsedAsync(userId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load documents: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingDocs = false;
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var userId = CurrentUser.UserId;
+        if (userId == null)
+        {
+            ToastService.ShowError("User not authenticated");
+            return;
+        }
+
+        foreach (var file in e.GetMultipleFiles(10)) // Allow up to 10 files at once
+        {
+            if (_isUploading) continue;
+
+            try
+            {
+                _isUploading = true;
+                _uploadingFileName = file.Name;
+                StateHasChanged();
+
+                await using var stream = file.OpenReadStream(maxAllowedSize: PersonalDocService.GetMaxFileSize());
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                ms.Position = 0;
+
+                await PersonalDocService.UploadDocumentAsync(userId.Value, ms, file.Name, file.ContentType);
+                ToastService.ShowSuccess($"Uploaded: {file.Name}");
+            }
+            catch (Exception ex)
+            {
+                ToastService.ShowError($"Failed to upload {file.Name}: {ex.Message}");
+            }
+            finally
+            {
+                _isUploading = false;
+                _uploadingFileName = "";
+            }
+        }
+
+        await LoadPersonalDocuments();
+    }
+
+    private void HandleDragEnter(DragEventArgs e) => _isDragOver = true;
+    private void HandleDragLeave(DragEventArgs e) => _isDragOver = false;
+    private void HandleDragOver(DragEventArgs e) => e.DataTransfer.DropEffect = "copy";
+
+    private void HandleDrop(DragEventArgs e)
+    {
+        _isDragOver = false;
+        // Note: Blazor doesn't support direct file drop yet, user must use the file input
+        ToastService.ShowInfo("Please use the upload button to select files");
+    }
+
+    private async Task DeleteDocument(Document doc)
+    {
+        if (_isDeleting) return;
+
+        var userId = CurrentUser.UserId;
+        if (userId == null) return;
+
+        try
+        {
+            _isDeleting = true;
+            await PersonalDocService.DeleteDocumentAsync(userId.Value, doc.Id);
+            _personalDocuments.Remove(doc);
+            _storageUsed = await PersonalDocService.GetStorageUsedAsync(userId.Value);
+            ToastService.ShowSuccess($"Deleted: {doc.FileName}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete: {ex.Message}");
+        }
+        finally
+        {
+            _isDeleting = false;
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+    }
+
+    private int GetStoragePercent()
+    {
+        var limit = PersonalDocService.GetStorageLimit();
+        if (limit == 0) return 0;
+        return (int)Math.Min(100, _storageUsed * 100 / limit);
+    }
+
+    private string GetStorageColor()
+    {
+        var percent = GetStoragePercent();
+        if (percent >= 90) return "#d13438";
+        if (percent >= 70) return "#ffb900";
+        return "#107c10";
+    }
+
+    private MarkupString GetFileIcon(string? mimeType)
+    {
+        var color = mimeType switch
+        {
+            "application/pdf" => "#d13438",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "#2b579a",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "#217346",
+            "text/csv" => "#217346",
+            "image/png" or "image/jpeg" => "#0078d4",
+            _ => "#666"
+        };
+
+        var icon = mimeType switch
+        {
+            "application/pdf" => "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 4h7l5 5v11H6V4zm4 10h4v2h-4v-2zm0-3h4v2h-4v-2z",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 4h7l5 5v11H6V4zm3 9h6v2H9v-2zm0 3h6v2H9v-2zm0-6h6v2H9v-2z",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or "text/csv" => "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7l5 5v11zM8 12h3v2H8v-2zm5 0h3v2h-3v-2zm-5 3h3v2H8v-2zm5 3h3v2h-3v-2zm-5 0h3v2H8v-2zm5-3h3v2h-3v-2z",
+            "image/png" or "image/jpeg" => "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z",
+            _ => "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 4h7l5 5v11H6V4z"
+        };
+
+        return new MarkupString($"<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"{color}\"><path d=\"{icon}\"/></svg>");
     }
 }

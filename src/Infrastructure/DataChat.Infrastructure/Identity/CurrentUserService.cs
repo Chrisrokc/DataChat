@@ -197,7 +197,7 @@ public class CurrentUserService : ICurrentUserService
         if (!UserId.HasValue)
             return Enumerable.Empty<Guid>();
 
-        // Admins can access all active data sources
+        // Admins can access all active data sources (including personal ones)
         if (IsAdmin)
         {
             return await _dbContext.DataSources
@@ -207,6 +207,8 @@ public class CurrentUserService : ICurrentUserService
                 .ToListAsync();
         }
 
+        var result = new HashSet<Guid>();
+
         // Get data sources user has direct permission to
         var userPermissions = await _dbContext.UserDataSourcePermissions
             .AsNoTracking()
@@ -214,19 +216,33 @@ public class CurrentUserService : ICurrentUserService
             .Select(p => p.DataSourceId)
             .ToListAsync();
 
+        foreach (var id in userPermissions)
+            result.Add(id);
+
         // Get data sources user has access to via AD groups
         var userGroupSids = AdGroupSids.ToList();
-        var groupPermissions = new List<Guid>();
-
         if (userGroupSids.Any())
         {
-            groupPermissions = await _dbContext.AdGroupDataSourcePermissions
+            var groupPermissions = await _dbContext.AdGroupDataSourcePermissions
                 .AsNoTracking()
                 .Where(p => userGroupSids.Contains(p.AdGroupSid) && p.CanRead)
                 .Select(p => p.DataSourceId)
                 .ToListAsync();
+
+            foreach (var id in groupPermissions)
+                result.Add(id);
         }
 
-        return userPermissions.Union(groupPermissions).Distinct();
+        // Include user's personal data source (owned by them)
+        var personalSourceId = await _dbContext.DataSources
+            .AsNoTracking()
+            .Where(d => d.OwnerUserId == UserId.Value && d.IsActive)
+            .Select(d => d.Id)
+            .FirstOrDefaultAsync();
+
+        if (personalSourceId != default)
+            result.Add(personalSourceId);
+
+        return result;
     }
 }

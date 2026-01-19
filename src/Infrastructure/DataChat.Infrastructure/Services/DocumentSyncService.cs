@@ -286,47 +286,68 @@ public class DocumentSyncService : IDocumentSyncService
         SyncFileResult result,
         CancellationToken cancellationToken)
     {
-        var fileName = Path.GetFileName(filePath);
+        var fileNameFromPath = Path.GetFileName(filePath);
         var fileInfo = new FileInfo(filePath);
         var fileHash = await ComputeFileHashAsync(filePath, cancellationToken);
 
-        // Check if document already exists and is unchanged
+        // Check if document already exists
         var existingDoc = await dbContext.Documents
             .FirstOrDefaultAsync(d => d.DataSourceId == dataSource.Id && d.FilePath == filePath, cancellationToken);
 
         if (existingDoc != null && existingDoc.FileHash == fileHash && existingDoc.Status == DocumentStatus.Indexed)
         {
-            _logger.LogDebug("Skipping unchanged file: {FileName}", fileName);
+            _logger.LogDebug("Skipping unchanged file: {FileName}", existingDoc.FileName);
             result.ChunksCreated = 0;
             return;
         }
 
-        // If document exists but changed, delete old chunks and embeddings
-        if (existingDoc != null)
+        Document document;
+
+        // If document exists with Pending status (just uploaded via PersonalDocumentService),
+        // preserve the original filename and reuse the record
+        if (existingDoc != null && existingDoc.Status == DocumentStatus.Pending)
+        {
+            document = existingDoc;
+            document.Status = DocumentStatus.Processing;
+            // Keep the original FileName set during upload
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        // If document exists but content changed, delete old chunks and update
+        else if (existingDoc != null)
         {
             await vectorStore.DeleteByDocumentIdAsync(existingDoc.Id, cancellationToken);
             dbContext.DocumentChunks.RemoveRange(
                 await dbContext.DocumentChunks.Where(c => c.DocumentId == existingDoc.Id).ToListAsync(cancellationToken));
-            dbContext.Documents.Remove(existingDoc);
+
+            // Preserve the original filename when updating
+            var originalFileName = existingDoc.FileName;
+            existingDoc.FileHash = fileHash;
+            existingDoc.FileSize = fileInfo.Length;
+            existingDoc.MimeType = GetMimeType(filePath);
+            existingDoc.Status = DocumentStatus.Processing;
+            existingDoc.ErrorMessage = null;
+            document = existingDoc;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-
-        // Create new document record
-        var document = new Document
+        else
         {
-            Id = Guid.NewGuid(),
-            DataSourceId = dataSource.Id,
-            FileName = fileName,
-            FilePath = filePath,
-            FileHash = fileHash,
-            FileSize = fileInfo.Length,
-            MimeType = GetMimeType(filePath),
-            Status = DocumentStatus.Processing,
-            CreatedAt = DateTime.UtcNow
-        };
+            // Create new document record (for files discovered during folder sync)
+            document = new Document
+            {
+                Id = Guid.NewGuid(),
+                DataSourceId = dataSource.Id,
+                FileName = fileNameFromPath,
+                FilePath = filePath,
+                FileHash = fileHash,
+                FileSize = fileInfo.Length,
+                MimeType = GetMimeType(filePath),
+                Status = DocumentStatus.Processing,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        dbContext.Documents.Add(document);
-        await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.Documents.Add(document);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         try
         {
@@ -344,7 +365,7 @@ public class DocumentSyncService : IDocumentSyncService
 
             // Chunk the content
             var textChunks = chunkingStrategy.ChunkDocument(parsed).ToList();
-            _logger.LogDebug("Created {ChunkCount} chunks for {FileName}", textChunks.Count, fileName);
+            _logger.LogDebug("Created {ChunkCount} chunks for {FileName}", textChunks.Count, document.FileName);
 
             // Process chunks
             var chunkEntities = new List<DocumentChunk>();
@@ -379,7 +400,7 @@ public class DocumentSyncService : IDocumentSyncService
 
             await dbContext.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Successfully indexed {FileName} with {ChunkCount} chunks", fileName, textChunks.Count);
+            _logger.LogInformation("Successfully indexed {FileName} with {ChunkCount} chunks", document.FileName, textChunks.Count);
         }
         catch (Exception ex)
         {

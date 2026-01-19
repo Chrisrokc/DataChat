@@ -4,6 +4,7 @@ using DataChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DataChat.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260119143456_AddPersonalDocumentOwnership")]
+    partial class AddPersonalDocumentOwnership
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -782,28 +785,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("AzureOpenAiApiKey")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("AzureOpenAiApiVersion")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("2024-02-15-preview");
-
-                    b.Property<string>("AzureOpenAiDeploymentName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("AzureOpenAiEmbeddingDeployment")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("AzureOpenAiEndpoint")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<bool>("AnnouncementDismissible")
                         .HasColumnType("bit");
 
@@ -867,9 +848,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                     b.Property<bool>("EnableSourcePreview")
                         .HasColumnType("bit");
 
-                    b.Property<int>("LlmProvider")
-                        .HasColumnType("int");
-
                     b.Property<int>("MaxTokensPerRequest")
                         .HasColumnType("int");
 
@@ -889,27 +867,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
                         .HasDefaultValue("gpt-4o");
-
-                    b.Property<string>("OllamaEmbeddingModel")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasDefaultValue("nomic-embed-text");
-
-                    b.Property<string>("OllamaEndpoint")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasDefaultValue("http://localhost:11434");
-
-                    b.Property<string>("OllamaModel")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasDefaultValue("llama3.2");
 
                     b.Property<int>("SourcePreviewMaxSources")
                         .HasColumnType("int");
@@ -969,7 +926,6 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                             AnnouncementDismissible = true,
                             AnnouncementEnabled = false,
                             AnnouncementType = "info",
-                            AzureOpenAiApiVersion = "2024-02-15-preview",
                             CostAlertEnabled = false,
                             CostAlertThreshold = 80m,
                             CostPerInputToken = 0.00001m,
@@ -979,12 +935,8 @@ namespace DataChat.Infrastructure.Persistence.Migrations
                             EnableDocumentDownload = true,
                             EnableDocumentPreview = true,
                             EnableSourcePreview = true,
-                            LlmProvider = 0,
                             MaxTokensPerRequest = 4096,
                             MonthlyCostBudget = 0m,
-                            OllamaEmbeddingModel = "nomic-embed-text",
-                            OllamaEndpoint = "http://localhost:11434",
-                            OllamaModel = "llama3.2",
                             OpenAiModel = "gpt-4o",
                             SourcePreviewMaxSources = 5,
                             SourcePreviewMinRelevance = 0,

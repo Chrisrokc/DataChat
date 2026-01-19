@@ -1,3 +1,5 @@
+using DataChat.Domain.Enums;
+
 namespace DataChat.Domain.Entities;
 
 public class SystemConfiguration
@@ -7,12 +9,27 @@ public class SystemConfiguration
     // AI Assistant Branding
     public string AiAssistantName { get; set; } = "Assistant";
 
+    // LLM Provider Selection
+    public LlmProvider LlmProvider { get; set; } = LlmProvider.OpenAI;
+
     // OpenAI Settings
     public string? OpenAiApiKey { get; set; } // Encrypted
     public string OpenAiModel { get; set; } = "gpt-4o";
     public string EmbeddingModel { get; set; } = "text-embedding-ada-002";
     public int MaxTokensPerRequest { get; set; } = 4096;
     public decimal Temperature { get; set; } = 0.7m;
+
+    // Azure OpenAI Settings
+    public string? AzureOpenAiEndpoint { get; set; } // e.g., https://myinstance.openai.azure.com
+    public string? AzureOpenAiApiKey { get; set; } // Encrypted
+    public string? AzureOpenAiDeploymentName { get; set; } // Chat deployment name
+    public string? AzureOpenAiEmbeddingDeployment { get; set; } // Embedding deployment name
+    public string AzureOpenAiApiVersion { get; set; } = "2024-02-15-preview";
+
+    // Ollama Settings
+    public string OllamaEndpoint { get; set; } = "http://localhost:11434";
+    public string OllamaModel { get; set; } = "llama3.2";
+    public string OllamaEmbeddingModel { get; set; } = "nomic-embed-text";
 
     // SQL Server 2025 Connection Settings (for queryable views)
     public string? SqlServerHost { get; set; }

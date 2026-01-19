@@ -1,9 +1,11 @@
 @page "/admin/configuration"
 @attribute [Authorize(Policy = "AdminOnly")]
 @using Microsoft.Data.SqlClient
+@using DataChat.Domain.Enums
+@using DataChat.Infrastructure.AI
 @inject IApplicationDbContext DbContext
 @inject ISecureConfigurationService SecureConfig
-@inject IAiChatService AiChatService
+@inject IAiServiceFactory AiServiceFactory
 @inject IToastService ToastService
 @inject ILogger<Configuration> Logger
 
@@ -127,54 +129,202 @@
         {
             <FluentCard Style="padding: 16px; margin-top: 16px;">
                 <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-bottom: 16px;">
-                    Configure your OpenAI API settings. The API key will be encrypted before storage.
+                    Configure your AI provider and model settings. API keys will be encrypted before storage.
                 </FluentMessageBar>
 
                 <FluentGrid Spacing="3">
-                    <FluentGridItem xs="12" sm="6">
-                        <FluentTextField @bind-Value="_apiKey"
-                                        Label="OpenAI API Key"
-                                        TextFieldType="@(_showApiKey ? TextFieldType.Text : TextFieldType.Password)"
-                                        Placeholder="@(_hasExistingApiKey ? "Leave blank to keep existing key" : "sk-...")"
-                                        Style="width: 100%;">
-                            <span slot="end" @onclick="@(() => _showApiKey = !_showApiKey)" style="cursor: pointer; display: flex; align-items: center;" title="@(_showApiKey ? "Hide API key" : "Show API key")">
-                                @if (_showApiKey)
+                    <FluentGridItem xs="12">
+                        <div>
+                            <label style="font-weight: 500; margin-bottom: 4px; display: block;">LLM Provider</label>
+                            <select @bind="_config.LlmProvider" style="width: 100%; max-width: 300px; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                <option value="@LlmProvider.OpenAI">OpenAI</option>
+                                <option value="@LlmProvider.AzureOpenAI">Azure OpenAI</option>
+                                <option value="@LlmProvider.Ollama">Ollama (Local)</option>
+                            </select>
+                        </div>
+                        <span style="font-size: 12px; color: gray;">Select your LLM provider</span>
+                    </FluentGridItem>
+
+                    <FluentGridItem xs="12">
+                        <hr style="border: none; border-top: 1px solid var(--neutral-stroke-rest); margin: 16px 0;" />
+                    </FluentGridItem>
+
+                    @if (_config.LlmProvider == LlmProvider.OpenAI)
+                    {
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_apiKey"
+                                            Label="OpenAI API Key"
+                                            TextFieldType="@(_showApiKey ? TextFieldType.Text : TextFieldType.Password)"
+                                            Placeholder="@(_hasExistingApiKey ? "Leave blank to keep existing key" : "sk-...")"
+                                            Style="width: 100%;">
+                                <span slot="end" @onclick="@(() => _showApiKey = !_showApiKey)" style="cursor: pointer; display: flex; align-items: center;" title="@(_showApiKey ? "Hide API key" : "Show API key")">
+                                    @if (_showApiKey)
+                                    {
+                                        <FluentIcon Value="@(new Icons.Regular.Size20.EyeOff())" />
+                                    }
+                                    else
+                                    {
+                                        <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+                                    }
+                                </span>
+                            </FluentTextField>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <div>
+                                <label style="font-weight: 500; margin-bottom: 4px; display: block;">Chat Model</label>
+                                <select @bind="_config.OpenAiModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                    @foreach (var model in _openAiChatModels)
+                                    {
+                                        <option value="@model">@model</option>
+                                    }
+                                </select>
+                            </div>
+                            <span style="font-size: 12px; color: gray;">Select the OpenAI model for chat completions</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <div>
+                                <label style="font-weight: 500; margin-bottom: 4px; display: block;">Embedding Model</label>
+                                <select @bind="_config.EmbeddingModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                    @foreach (var model in _openAiEmbeddingModels)
+                                    {
+                                        <option value="@model">@model</option>
+                                    }
+                                </select>
+                            </div>
+                            <span style="font-size: 12px; color: gray;">Select the model for document embeddings</span>
+                        </FluentGridItem>
+                    }
+                    else if (_config.LlmProvider == LlmProvider.AzureOpenAI)
+                    {
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_config.AzureOpenAiEndpoint"
+                                            Label="Azure OpenAI Endpoint"
+                                            Placeholder="https://your-resource.openai.azure.com"
+                                            Style="width: 100%;" />
+                            <span style="font-size: 12px; color: gray;">Your Azure OpenAI resource endpoint URL</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_azureApiKey"
+                                            Label="Azure OpenAI API Key"
+                                            TextFieldType="@(_showAzureApiKey ? TextFieldType.Text : TextFieldType.Password)"
+                                            Placeholder="@(_hasExistingAzureApiKey ? "Leave blank to keep existing key" : "Enter API key")"
+                                            Style="width: 100%;">
+                                <span slot="end" @onclick="@(() => _showAzureApiKey = !_showAzureApiKey)" style="cursor: pointer; display: flex; align-items: center;" title="@(_showAzureApiKey ? "Hide API key" : "Show API key")">
+                                    @if (_showAzureApiKey)
+                                    {
+                                        <FluentIcon Value="@(new Icons.Regular.Size20.EyeOff())" />
+                                    }
+                                    else
+                                    {
+                                        <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+                                    }
+                                </span>
+                            </FluentTextField>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_config.AzureOpenAiDeploymentName"
+                                            Label="Chat Deployment Name"
+                                            Placeholder="e.g., gpt-4o-deployment"
+                                            Style="width: 100%;" />
+                            <span style="font-size: 12px; color: gray;">Your Azure OpenAI chat model deployment name</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_config.AzureOpenAiEmbeddingDeployment"
+                                            Label="Embedding Deployment Name"
+                                            Placeholder="e.g., text-embedding-ada-002"
+                                            Style="width: 100%;" />
+                            <span style="font-size: 12px; color: gray;">Your Azure OpenAI embedding model deployment name</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_config.AzureOpenAiApiVersion"
+                                            Label="API Version"
+                                            Placeholder="2024-02-15-preview"
+                                            Style="width: 100%;" />
+                            <span style="font-size: 12px; color: gray;">Azure OpenAI API version</span>
+                        </FluentGridItem>
+                    }
+                    else if (_config.LlmProvider == LlmProvider.Ollama)
+                    {
+                        <FluentGridItem xs="12">
+                            <FluentMessageBar Intent="@MessageIntent.Warning" Style="margin-bottom: 12px;">
+                                <strong>Note:</strong> Ollama must be running locally or on a reachable server. Some embedding models may have different dimensions than OpenAI (1536). If you switch providers, you may need to re-index your documents.
+                            </FluentMessageBar>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <FluentTextField @bind-Value="_config.OllamaEndpoint"
+                                            Label="Ollama Endpoint"
+                                            Placeholder="http://localhost:11434"
+                                            Style="width: 100%;" />
+                            <span style="font-size: 12px; color: gray;">Ollama API endpoint URL</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <div style="display: flex; align-items: flex-end; gap: 8px;">
+                                <FluentButton Appearance="Appearance.Outline"
+                                             OnClick="FetchOllamaModels"
+                                             Disabled="_isFetchingOllamaModels"
+                                             Style="margin-bottom: 4px;">
+                                    @if (_isFetchingOllamaModels)
+                                    {
+                                        <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                                    }
+                                    Fetch Models
+                                </FluentButton>
+                            </div>
+                            <span style="font-size: 12px; color: gray;">Click to retrieve available models from your Ollama server</span>
+                        </FluentGridItem>
+
+                        <FluentGridItem xs="12" sm="6">
+                            <div>
+                                <label style="font-weight: 500; margin-bottom: 4px; display: block;">Chat Model</label>
+                                @if (_ollamaAvailableModels.Any())
                                 {
-                                    <FluentIcon Value="@(new Icons.Regular.Size20.EyeOff())" />
+                                    <select @bind="_config.OllamaModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                        @foreach (var model in _ollamaAvailableModels)
+                                        {
+                                            <option value="@model">@model</option>
+                                        }
+                                    </select>
                                 }
                                 else
                                 {
-                                    <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+                                    <FluentTextField @bind-Value="_config.OllamaModel"
+                                                    Placeholder="e.g., llama3.2, mistral, phi3"
+                                                    Style="width: 100%;" />
                                 }
-                            </span>
-                        </FluentTextField>
-                    </FluentGridItem>
+                            </div>
+                            <span style="font-size: 12px; color: gray;">@(_ollamaAvailableModels.Any() ? "Select from available models" : "Enter model name or click Fetch Models")</span>
+                        </FluentGridItem>
 
-                    <FluentGridItem xs="12" sm="6">
-                        <div>
-                            <label style="font-weight: 500; margin-bottom: 4px; display: block;">Chat Model</label>
-                            <select @bind="_config.OpenAiModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
-                                @foreach (var model in _chatModels)
+                        <FluentGridItem xs="12" sm="6">
+                            <div>
+                                <label style="font-weight: 500; margin-bottom: 4px; display: block;">Embedding Model</label>
+                                @if (_ollamaAvailableModels.Any())
                                 {
-                                    <option value="@model">@model</option>
+                                    <select @bind="_config.OllamaEmbeddingModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
+                                        @foreach (var model in _ollamaAvailableModels)
+                                        {
+                                            <option value="@model">@model</option>
+                                        }
+                                    </select>
                                 }
-                            </select>
-                        </div>
-                        <span style="font-size: 12px; color: gray;">Select the OpenAI model for chat completions</span>
-                    </FluentGridItem>
-
-                    <FluentGridItem xs="12" sm="6">
-                        <div>
-                            <label style="font-weight: 500; margin-bottom: 4px; display: block;">Embedding Model</label>
-                            <select @bind="_config.EmbeddingModel" style="width: 100%; padding: 8px; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px;">
-                                @foreach (var model in _embeddingModels)
+                                else
                                 {
-                                    <option value="@model">@model</option>
+                                    <FluentTextField @bind-Value="_config.OllamaEmbeddingModel"
+                                                    Placeholder="e.g., nomic-embed-text, mxbai-embed-large"
+                                                    Style="width: 100%;" />
                                 }
-                            </select>
-                        </div>
-                        <span style="font-size: 12px; color: gray;">Select the model for document embeddings</span>
-                    </FluentGridItem>
+                            </div>
+                            <span style="font-size: 12px; color: gray;">@(_ollamaAvailableModels.Any() ? "Select from available models" : "Enter model name or click Fetch Models")</span>
+                        </FluentGridItem>
+                    }
 
                     <FluentGridItem xs="12" sm="6">
                         <FluentNumberField @bind-Value="_config.MaxTokensPerRequest"
@@ -363,6 +513,11 @@
     private string _testMessage = "Hello! Can you confirm you're working correctly?";
     private string _testResponse = "";
 
+    // Azure OpenAI fields
+    private string _azureApiKey = "";
+    private bool _showAzureApiKey;
+    private bool _hasExistingAzureApiKey;
+
     // SQL Server fields
     private string _sqlPassword = "";
     private bool _showSqlPassword;
@@ -375,8 +530,13 @@
     // RAG settings
     private bool _isSavingRag;
 
-    private readonly string[] _chatModels = { "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo" };
-    private readonly string[] _embeddingModels = { "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002" };
+    // Model lists per provider
+    private readonly string[] _openAiChatModels = { "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo" };
+    private readonly string[] _openAiEmbeddingModels = { "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002" };
+
+    // Ollama models fetched from server
+    private List<string> _ollamaAvailableModels = new();
+    private bool _isFetchingOllamaModels;
 
     protected override async Task OnInitializedAsync()
     {
@@ -396,6 +556,7 @@
 
         _temperature = (float)_config.Temperature;
         _hasExistingApiKey = !string.IsNullOrEmpty(_config.OpenAiApiKey);
+        _hasExistingAzureApiKey = !string.IsNullOrEmpty(_config.AzureOpenAiApiKey);
         _hasExistingSqlPassword = !string.IsNullOrEmpty(_config.SqlServerPassword);
     }
 
@@ -538,11 +699,18 @@
         _isSaving = true;
         try
         {
-            // Only update API key if a new one was provided
+            // Only update OpenAI API key if a new one was provided
             if (!string.IsNullOrWhiteSpace(_apiKey))
             {
                 _config.OpenAiApiKey = SecureConfig.Encrypt(_apiKey);
                 _hasExistingApiKey = true;
+            }
+
+            // Only update Azure API key if a new one was provided
+            if (!string.IsNullOrWhiteSpace(_azureApiKey))
+            {
+                _config.AzureOpenAiApiKey = SecureConfig.Encrypt(_azureApiKey);
+                _hasExistingAzureApiKey = true;
             }
 
             _config.Temperature = (decimal)_temperature;
@@ -551,8 +719,9 @@
             await DbContext.SaveChangesAsync();
             ToastService.ShowSuccess("Settings saved successfully!");
 
-            // Clear the API key field after saving
+            // Clear the API key fields after saving
             _apiKey = "";
+            _azureApiKey = "";
         }
         catch (Exception ex)
         {
@@ -570,27 +739,85 @@
         _isTesting = true;
         try
         {
-            // Get the API key - either from the form or from the saved config
-            var apiKeyToTest = !string.IsNullOrWhiteSpace(_apiKey)
-                ? _apiKey
-                : (_config?.OpenAiApiKey != null ? SecureConfig.Decrypt(_config.OpenAiApiKey) : null);
+            if (_config == null) return;
 
-            if (string.IsNullOrWhiteSpace(apiKeyToTest))
+            switch (_config.LlmProvider)
             {
-                ToastService.ShowWarning("Please enter an API key first");
-                return;
-            }
+                case LlmProvider.OpenAI:
+                    var apiKeyToTest = !string.IsNullOrWhiteSpace(_apiKey)
+                        ? _apiKey
+                        : (_config.OpenAiApiKey != null ? SecureConfig.Decrypt(_config.OpenAiApiKey) : null);
 
-            // Simple test: just check if the key format looks valid
-            if (!apiKeyToTest.StartsWith("sk-"))
-            {
-                ToastService.ShowWarning("API key should start with 'sk-'");
-                return;
-            }
+                    if (string.IsNullOrWhiteSpace(apiKeyToTest))
+                    {
+                        ToastService.ShowWarning("Please enter an OpenAI API key first");
+                        return;
+                    }
 
-            // TODO: Add actual API validation call
-            await Task.Delay(500); // Simulate API call
-            ToastService.ShowSuccess("API key format is valid. Save settings and use Test Chat to verify functionality.");
+                    if (!apiKeyToTest.StartsWith("sk-"))
+                    {
+                        ToastService.ShowWarning("OpenAI API key should start with 'sk-'");
+                        return;
+                    }
+
+                    await Task.Delay(500);
+                    ToastService.ShowSuccess("OpenAI API key format is valid. Use Test Chat to verify functionality.");
+                    break;
+
+                case LlmProvider.AzureOpenAI:
+                    if (string.IsNullOrWhiteSpace(_config.AzureOpenAiEndpoint))
+                    {
+                        ToastService.ShowWarning("Please enter an Azure OpenAI endpoint");
+                        return;
+                    }
+
+                    var azureKey = !string.IsNullOrWhiteSpace(_azureApiKey)
+                        ? _azureApiKey
+                        : (_config.AzureOpenAiApiKey != null ? SecureConfig.Decrypt(_config.AzureOpenAiApiKey) : null);
+
+                    if (string.IsNullOrWhiteSpace(azureKey))
+                    {
+                        ToastService.ShowWarning("Please enter an Azure OpenAI API key");
+                        return;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(_config.AzureOpenAiDeploymentName))
+                    {
+                        ToastService.ShowWarning("Please enter an Azure OpenAI chat deployment name");
+                        return;
+                    }
+
+                    await Task.Delay(500);
+                    ToastService.ShowSuccess("Azure OpenAI configuration looks valid. Use Test Chat to verify functionality.");
+                    break;
+
+                case LlmProvider.Ollama:
+                    if (string.IsNullOrWhiteSpace(_config.OllamaEndpoint))
+                    {
+                        ToastService.ShowWarning("Please enter an Ollama endpoint");
+                        return;
+                    }
+
+                    // Try to reach the Ollama API
+                    try
+                    {
+                        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                        var response = await httpClient.GetAsync($"{_config.OllamaEndpoint}/api/tags");
+                        if (response.IsSuccessStatusCode)
+                        {
+                            ToastService.ShowSuccess("Ollama is reachable! Use Test Chat to verify model functionality.");
+                        }
+                        else
+                        {
+                            ToastService.ShowWarning($"Ollama returned status {response.StatusCode}. Verify the endpoint is correct.");
+                        }
+                    }
+                    catch (HttpRequestException)
+                    {
+                        ToastService.ShowError("Cannot reach Ollama. Make sure Ollama is running and the endpoint is correct.");
+                    }
+                    break;
+            }
         }
         catch (Exception ex)
         {
@@ -603,6 +830,80 @@
         }
     }
 
+    private async Task FetchOllamaModels()
+    {
+        if (_config == null || string.IsNullOrWhiteSpace(_config.OllamaEndpoint))
+        {
+            ToastService.ShowWarning("Please enter an Ollama endpoint first");
+            return;
+        }
+
+        _isFetchingOllamaModels = true;
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var response = await httpClient.GetAsync($"{_config.OllamaEndpoint}/api/tags");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                ToastService.ShowError($"Failed to fetch models: {response.StatusCode}");
+                return;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+
+            _ollamaAvailableModels.Clear();
+
+            if (doc.RootElement.TryGetProperty("models", out var modelsArray))
+            {
+                foreach (var model in modelsArray.EnumerateArray())
+                {
+                    if (model.TryGetProperty("name", out var nameElement))
+                    {
+                        var modelName = nameElement.GetString();
+                        if (!string.IsNullOrEmpty(modelName))
+                        {
+                            _ollamaAvailableModels.Add(modelName);
+                        }
+                    }
+                }
+            }
+
+            if (_ollamaAvailableModels.Any())
+            {
+                // If current model is not in the list, set to first available
+                if (!_ollamaAvailableModels.Contains(_config.OllamaModel))
+                {
+                    _config.OllamaModel = _ollamaAvailableModels.First();
+                }
+                if (!_ollamaAvailableModels.Contains(_config.OllamaEmbeddingModel))
+                {
+                    _config.OllamaEmbeddingModel = _ollamaAvailableModels.First();
+                }
+
+                ToastService.ShowSuccess($"Found {_ollamaAvailableModels.Count} model(s) on Ollama server");
+            }
+            else
+            {
+                ToastService.ShowWarning("No models found on Ollama server. Pull a model with 'ollama pull <model>'");
+            }
+        }
+        catch (HttpRequestException)
+        {
+            ToastService.ShowError("Cannot reach Ollama server. Make sure it's running.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to fetch Ollama models");
+            ToastService.ShowError($"Failed to fetch models: {ex.Message}");
+        }
+        finally
+        {
+            _isFetchingOllamaModels = false;
+        }
+    }
+
     private async Task SendTestMessage()
     {
         _isTestingChat = true;
@@ -610,20 +911,51 @@
 
         try
         {
-            if (string.IsNullOrWhiteSpace(_config?.OpenAiApiKey))
+            if (_config == null)
             {
-                ToastService.ShowWarning("Please save an API key first");
+                ToastService.ShowWarning("Configuration not loaded");
                 return;
             }
 
-            // Use the injected IAiChatService to test
+            // Validate provider-specific configuration
+            switch (_config.LlmProvider)
+            {
+                case LlmProvider.OpenAI:
+                    if (string.IsNullOrWhiteSpace(_config.OpenAiApiKey))
+                    {
+                        ToastService.ShowWarning("Please save an OpenAI API key first");
+                        return;
+                    }
+                    break;
+                case LlmProvider.AzureOpenAI:
+                    if (string.IsNullOrWhiteSpace(_config.AzureOpenAiApiKey) ||
+                        string.IsNullOrWhiteSpace(_config.AzureOpenAiEndpoint) ||
+                        string.IsNullOrWhiteSpace(_config.AzureOpenAiDeploymentName))
+                    {
+                        ToastService.ShowWarning("Please configure and save Azure OpenAI settings first");
+                        return;
+                    }
+                    break;
+                case LlmProvider.Ollama:
+                    if (string.IsNullOrWhiteSpace(_config.OllamaEndpoint) ||
+                        string.IsNullOrWhiteSpace(_config.OllamaModel))
+                    {
+                        ToastService.ShowWarning("Please configure and save Ollama settings first");
+                        return;
+                    }
+                    break;
+            }
+
+            // Get a fresh chat service from the factory to use the currently saved provider
+            var chatService = AiServiceFactory.GetChatService();
+
             var messages = new List<ChatMessageDto>
             {
                 new(Guid.NewGuid(), DataChat.Domain.Enums.MessageRole.User, _testMessage, DateTime.UtcNow)
             };
 
             var responseBuilder = new System.Text.StringBuilder();
-            await foreach (var chunk in AiChatService.StreamResponseAsync(messages, null, CancellationToken.None))
+            await foreach (var chunk in chatService.StreamResponseAsync(messages, null, CancellationToken.None))
             {
                 responseBuilder.Append(chunk);
                 _testResponse = responseBuilder.ToString();

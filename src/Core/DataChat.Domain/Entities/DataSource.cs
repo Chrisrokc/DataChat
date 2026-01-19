@@ -11,7 +11,11 @@ public class DataSource : AuditableEntity
     public DataSourceType Type { get; set; }
     public bool IsActive { get; set; } = true;
 
+    // Personal document ownership (null = shared/enterprise, set = personal)
+    public Guid? OwnerUserId { get; set; }
+
     // Navigation properties
+    public virtual User? Owner { get; set; }
     public virtual FileSystemDataSource? FileSystemDataSource { get; set; }
     public virtual SqlViewDataSource? SqlViewDataSource { get; set; }
     public virtual ICollection<Document> Documents { get; set; } = new List<Document>();

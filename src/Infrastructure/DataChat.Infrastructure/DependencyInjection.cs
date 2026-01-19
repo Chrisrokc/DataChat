@@ -1,4 +1,7 @@
 using DataChat.Application.Common.Interfaces;
+using DataChat.Infrastructure.AI;
+using DataChat.Infrastructure.AI.AzureOpenAI;
+using DataChat.Infrastructure.AI.Ollama;
 using DataChat.Infrastructure.AI.OpenAI;
 using DataChat.Infrastructure.DocumentProcessing.Chunking;
 using DataChat.Infrastructure.DocumentProcessing.Parsers;
@@ -48,9 +51,25 @@ public static class DependencyInjection
         services.AddScoped<IDatabaseConnectionService, DatabaseConnectionService>();
         services.AddScoped<IDocumentAccessTokenService, DocumentAccessTokenService>();
 
-        // AI Services
-        services.AddScoped<IAiChatService, OpenAiChatService>();
-        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
+        // AI Services - Register all provider implementations
+        services.AddScoped<OpenAiChatService>();
+        services.AddScoped<OpenAiEmbeddingService>();
+        services.AddScoped<AzureOpenAiChatService>();
+        services.AddScoped<AzureOpenAiEmbeddingService>();
+        services.AddScoped<OllamaChatService>();
+        services.AddScoped<OllamaEmbeddingService>();
+
+        // AI Service Factory
+        services.AddScoped<IAiServiceFactory, AiServiceFactory>();
+
+        // Register interfaces via factory
+        services.AddScoped<IAiChatService>(sp =>
+            sp.GetRequiredService<IAiServiceFactory>().GetChatService());
+        services.AddScoped<IEmbeddingService>(sp =>
+            sp.GetRequiredService<IAiServiceFactory>().GetEmbeddingService());
+
+        // HttpClient for Ollama
+        services.AddHttpClient("Ollama");
 
         // Vector Store
         services.AddScoped<IVectorStore, SqlServerVectorStore>();
@@ -59,11 +78,16 @@ public static class DependencyInjection
         services.AddScoped<IDocumentParser, PdfParser>();
         services.AddScoped<IDocumentParser, WordDocumentParser>();
         services.AddScoped<IDocumentParser, TextFileParser>();
+        services.AddScoped<IDocumentParser, ImageParser>();
+        services.AddScoped<IDocumentParser, SpreadsheetParser>();
         services.AddScoped<IDocumentParserFactory, DocumentParserFactory>();
         services.AddScoped<IChunkingStrategy, RecursiveChunkingStrategy>();
 
         // Document Sync Service (singleton to maintain job state across requests)
         services.AddSingleton<IDocumentSyncService, DocumentSyncService>();
+
+        // Personal Document Service
+        services.AddScoped<IPersonalDocumentService, PersonalDocumentService>();
 
         // HTTP Context
         services.AddHttpContextAccessor();

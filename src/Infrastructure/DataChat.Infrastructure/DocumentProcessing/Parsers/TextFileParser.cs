@@ -4,7 +4,7 @@ namespace DataChat.Infrastructure.DocumentProcessing.Parsers;
 
 public class TextFileParser : IDocumentParser
 {
-    private static readonly string[] SupportedExtensions = { ".txt", ".md", ".csv" };
+    private static readonly string[] SupportedExtensions = { ".txt", ".md" };
 
     public bool CanParse(string filePath)
     {

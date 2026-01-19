@@ -39,6 +39,14 @@ public class DataSourceConfiguration : IEntityTypeConfiguration<DataSource>
             .WithOne(s => s.DataSource)
             .HasForeignKey<SqlViewDataSource>(s => s.DataSourceId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Personal document ownership relationship
+        builder.HasOne(d => d.Owner)
+            .WithMany()
+            .HasForeignKey(d => d.OwnerUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(d => d.OwnerUserId);
     }
 }
 
