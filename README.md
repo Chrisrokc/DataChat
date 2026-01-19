@@ -11,14 +11,16 @@ A modern enterprise AI chat application with RAG (Retrieval-Augmented Generation
 ## Features
 
 ### Core Features
-- **AI-Powered Chat** - Interactive chat interface with streaming responses powered by OpenAI GPT models
+- **AI-Powered Chat** - Interactive chat interface with streaming responses powered by OpenAI, Azure OpenAI, or Ollama
 - **RAG (Retrieval-Augmented Generation)** - AI responses grounded in your documents and data
-- **File Uploads** - Upload images, PDFs, and documents directly in chat for AI analysis
+- **File Uploads** - Upload images, PDFs, Excel files, CSV, and documents directly in chat for AI analysis
+- **Multi-Provider LLM Support** - Choose between OpenAI, Azure OpenAI, or Ollama for chat and embeddings
 - **SQL Data Sources** - Connect to SQL Server databases and query tables/views as knowledge sources
 - **File System Indexing** - Index documents from folders with pattern matching
 - **Vector Search** - SQL Server 2025 native VECTOR type for semantic search
 - **User Management** - Role-based access control with local or Windows authentication
 - **Data Source Permissions** - Control who can access which data sources
+- **Personal Documents** - Users can upload private documents only they can search
 
 ### Chat Features
 - **Message Reactions** - Thumbs up/down feedback on AI responses with optional comments
@@ -26,13 +28,15 @@ A modern enterprise AI chat application with RAG (Retrieval-Augmented Generation
 - **Dark Mode** - Full dark theme support with automatic persistence
 
 ### Admin Dashboard
+- **Configuration Status** - Visual dashboard showing red/yellow/green status for all system components
 - **Analytics Dashboard** - Usage metrics, daily activity charts, top users, and engagement statistics
 - **Audit Log Viewer** - Searchable log of all system actions with filtering and export
 - **Cost Tracking** - Monitor API token usage and costs with budget alerts
 - **Announcement Banner** - Display system-wide announcements with scheduling and styling options
 - **Branding Configuration** - Customize application name, colors, and logo
-- **User Management** - Manage users, roles, and permissions
+- **User Management** - Manage users, roles, and AD group mappings
 - **Data Source Management** - Configure and monitor knowledge base sync status
+- **Authentication Configuration** - Configure Local or Windows Authentication with domain restrictions
 
 ## Screenshots
 
@@ -45,7 +49,7 @@ A modern enterprise AI chat application with RAG (Retrieval-Augmented Generation
 | **Backend** | .NET 8, ASP.NET Core, Entity Framework Core 8 |
 | **Frontend** | Blazor Server, Microsoft Fluent UI |
 | **Database** | SQL Server 2025 (native VECTOR support) |
-| **AI** | OpenAI API (GPT-4o, GPT-4, GPT-3.5-turbo) |
+| **AI** | OpenAI, Azure OpenAI, or Ollama (GPT-4o, GPT-4, Llama, etc.) |
 | **Architecture** | Clean Architecture, CQRS with MediatR |
 | **Real-time** | SignalR for streaming responses |
 
@@ -55,7 +59,10 @@ Before you begin, ensure you have the following installed:
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [SQL Server 2025](https://www.microsoft.com/en-us/sql-server/sql-server-downloads) (required for native VECTOR type)
-- [OpenAI API Key](https://platform.openai.com/api-keys)
+- One of the following AI providers:
+  - [OpenAI API Key](https://platform.openai.com/api-keys)
+  - [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service)
+  - [Ollama](https://ollama.ai/) (for local/self-hosted models)
 
 ## Quick Start
 
@@ -109,18 +116,15 @@ The application will:
    - Username: `admin`
    - Password: (set via the setup endpoint)
 
-2. **Configure OpenAI API Key**
+2. **Configure AI Provider**
 
    - Log in as admin
    - Go to **Admin > Configuration > AI Settings**
-   - Enter your OpenAI API key
-   - Select your preferred model (gpt-4o recommended)
-   - Click **Save**
+   - Select your LLM Provider (OpenAI, Azure OpenAI, or Ollama)
+   - Enter the required credentials for your provider
+   - Click **Test & Save Settings** to verify the configuration
 
-3. **Test the Configuration**
-
-   - Go to **Admin > Configuration > Test Chat**
-   - Send a test message to verify everything works
+   The Status tab will show green indicators when everything is configured correctly.
 
 ## Setting Up Example Data
 
@@ -273,20 +277,107 @@ Go to the chat and try these questions:
 
 ## Configuration Options
 
+All configuration is managed through the **Admin > Configuration** panel, which provides a visual status dashboard and organized tabs for each configuration area.
+
+### Configuration Status Dashboard
+
+The **Status** tab provides at-a-glance health indicators:
+- 🟢 **Green** - Configured and working
+- 🟡 **Yellow** - Configured with warnings
+- 🔴 **Red** - Not configured or error
+
+Components monitored:
+- SQL Server Connection
+- Chat Model
+- Embedding Model
+- RAG Settings
+- Authentication
+
+### AI Settings Tab
+
+Configure your LLM provider for chat and embeddings.
+
+#### OpenAI
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **API Key** | Your OpenAI API key | Required |
+| **Chat Model** | GPT model for chat | gpt-4o |
+| **Embedding Model** | Model for vector embeddings | text-embedding-ada-002 |
+| **Temperature** | Response creativity (0-1) | 0.7 |
+| **Max Tokens** | Maximum response length | 4096 |
+
+#### Azure OpenAI
+| Setting | Description | Example |
+|---------|-------------|---------|
+| **Endpoint** | Azure OpenAI endpoint URL | https://myinstance.openai.azure.com |
+| **API Key** | Azure OpenAI API key | Required |
+| **Chat Deployment** | Deployment name for chat model | gpt-4o-deployment |
+| **Embedding Deployment** | Deployment name for embeddings | text-embedding-deployment |
+| **API Version** | Azure OpenAI API version | 2024-02-15-preview |
+
+#### Ollama (Self-Hosted)
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Endpoint** | Ollama server URL | http://localhost:11434 |
+| **Chat Model** | Model name for chat | llama3.2 |
+| **Embedding Model** | Model name for embeddings | nomic-embed-text |
+
+Click **Test & Save Settings** to validate your configuration before saving.
+
+### SQL Server Tab
+
+Configure a SQL Server 2025 connection for queryable views as knowledge sources.
+
+| Setting | Description |
+|---------|-------------|
+| **Host** | SQL Server hostname or IP |
+| **Port** | SQL Server port (default: 1433) |
+| **Database** | Database name |
+| **Username/Password** | SQL Server authentication |
+| **Use Integrated Security** | Use Windows Authentication |
+| **Trust Server Certificate** | Skip certificate validation |
+
+### RAG Settings Tab
+
+Configure Retrieval-Augmented Generation behavior.
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Enable Source Preview** | Allow users to see document chunks used in responses | Enabled |
+| **Enable Document Preview** | Allow in-browser document viewing | Enabled |
+| **Enable Document Download** | Allow document downloads | Enabled |
+| **Token Expiration** | Document access token validity (minutes) | 10 |
+| **Min Relevance** | Minimum relevance % to show sources (0 = show all) | 0 |
+| **Max Sources** | Maximum sources to display per response | 5 |
+
+### Authentication Tab
+
+Configure user authentication mode.
+
+#### Local Authentication (Default)
+- Username/password stored in database
+- Passwords encrypted with ASP.NET Core Data Protection
+- Session-based with configurable expiration
+
+#### Windows Authentication
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Auto-provision users** | Create user accounts on first Windows login | Enabled |
+| **Default Role** | Role for auto-provisioned users | User |
+| **Allowed Domains** | Restrict to specific AD domains (semicolon-separated) | All domains |
+
+**Note:** Windows Authentication settings require an application restart to take effect.
+
+**AD Group Permissions:** Map Active Directory groups to application roles or data source permissions via the **User Management** page.
+
 ### appsettings.json
+
+Base configuration file (authentication mode is now managed via Admin panel):
 
 ```json
 {
   "ConnectionStrings": {
     "DefaultConnection": "Server=...;Database=DataChat;..."
-  },
-  "Authentication": {
-    "Mode": "Local",
-    "WindowsAuth": {
-      "Enabled": false,
-      "AutoProvisionUsers": true,
-      "DefaultRole": "User"
-    }
   },
   "Logging": {
     "LogLevel": {
@@ -295,16 +386,6 @@ Go to the chat and try these questions:
   }
 }
 ```
-
-### AI Settings (via Admin Panel)
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **OpenAI API Key** | Your OpenAI API key | Required |
-| **Chat Model** | GPT model for chat | gpt-4o |
-| **Embedding Model** | Model for vector embeddings | text-embedding-ada-002 |
-| **Temperature** | Response creativity (0-1) | 0.7 |
-| **Max Tokens** | Maximum response length | 2048 |
 
 ## Project Structure
 
@@ -330,33 +411,48 @@ DataChat/
 ### Chat Attachments
 - **Images**: PNG, JPG, GIF, WebP (sent to vision API)
 - **PDFs**: Rendered as images for AI analysis
-- **Text**: TXT, CSV, MD, JSON (extracted as text)
+- **Spreadsheets**: Excel (XLSX, XLS), CSV (parsed and converted to text)
+- **Text**: TXT, MD, JSON (extracted as text)
 
 ### Data Source Indexing
-- **Documents**: PDF, DOCX, DOC, TXT
+- **Documents**: PDF, DOCX, DOC, TXT, MD
+- **Spreadsheets**: Excel (XLSX, XLS), CSV
+- **Images**: PNG, JPG, JPEG (for personal documents)
 - **Data**: SQL Server tables and views
 
 ## Authentication Modes
 
+Authentication is configured via **Admin > Configuration > Authentication**.
+
 ### Local Authentication (Default)
 - Username/password stored in database
-- Passwords encrypted with data protection
+- Passwords encrypted with ASP.NET Core Data Protection
 - Session-based with 7-day sliding expiration
 
 ### Windows Authentication
-Enable in `appsettings.json`:
-```json
-{
-  "Authentication": {
-    "Mode": "Windows",
-    "WindowsAuth": {
-      "Enabled": true,
-      "AutoProvisionUsers": true,
-      "DefaultRole": "User"
-    }
-  }
-}
-```
+
+To enable Windows Authentication:
+
+1. Go to **Admin > Configuration > Authentication**
+2. Select **Windows Authentication** from the dropdown
+3. Configure options:
+   - **Auto-provision users**: Automatically create accounts for Windows users on first login
+   - **Default Role**: Role assigned to auto-provisioned users (User or Admin)
+   - **Allowed Domains**: Restrict login to specific AD domains (e.g., `CORP;PARTNERS`)
+4. Click **Save Authentication Settings**
+5. **Restart the application** for changes to take effect
+
+#### Domain Restrictions
+Enter allowed domains separated by semicolons. Leave blank to allow all domains.
+
+Example: `CORP;MYDOMAIN;PARTNERS`
+
+Users from domains not in the list will see an "Access Denied" page.
+
+#### AD Group Permissions
+Map Active Directory groups to application roles or data source permissions:
+1. Go to **Admin > User Management**
+2. Use the AD Group mappings section to configure permissions
 
 ## Deployment
 
@@ -513,19 +609,11 @@ If using Windows Authentication:
 2. Double-click **Authentication**
 3. Enable **Windows Authentication**
 4. Disable **Anonymous Authentication** (or keep both enabled for mixed mode)
-5. Update `appsettings.Production.json`:
-   ```json
-   {
-     "Authentication": {
-       "Mode": "Windows",
-       "WindowsAuth": {
-         "Enabled": true,
-         "AutoProvisionUsers": true,
-         "DefaultRole": "User"
-       }
-     }
-   }
-   ```
+5. In the DataChat admin panel:
+   - Go to **Admin > Configuration > Authentication**
+   - Select **Windows Authentication**
+   - Configure auto-provisioning and allowed domains
+   - Save and restart the application
 
 ### Troubleshooting IIS Deployment
 
