@@ -384,7 +384,7 @@ else
         try
         {
             // Load configuration
-            _config = await DbContext.SystemConfiguration.FirstOrDefaultAsync() ?? new SystemConfiguration();
+            _config = await DbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync() ?? new SystemConfiguration();
 
             await LoadMetrics();
         }
@@ -511,7 +511,7 @@ else
 
         try
         {
-            var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+            var config = await DbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync();
             if (config != null)
             {
                 config.CostPerInputToken = _config.CostPerInputToken;

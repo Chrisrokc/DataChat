@@ -732,7 +732,7 @@
 
     private async Task LoadConfiguration()
     {
-        _config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+        _config = await DbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync();
 
         if (_config == null)
         {

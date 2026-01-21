@@ -69,6 +69,7 @@ public class AiServiceFactory : IAiServiceFactory
 
         var config = dbContext.SystemConfiguration
             .AsNoTracking()
+            .Take(1)
             .FirstOrDefault();
 
         if (config == null)

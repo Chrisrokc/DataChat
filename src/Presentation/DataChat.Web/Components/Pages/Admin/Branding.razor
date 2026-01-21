@@ -201,7 +201,7 @@ else
         }
 
         // Load AI assistant name from SystemConfiguration
-        _systemConfig = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+        _systemConfig = await DbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync();
         if (_systemConfig != null)
         {
             _aiAssistantName = _systemConfig.AiAssistantName;

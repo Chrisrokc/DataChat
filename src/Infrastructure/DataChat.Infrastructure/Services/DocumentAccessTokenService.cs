@@ -31,7 +31,7 @@ public class DocumentAccessTokenService : IDocumentAccessTokenService
     public string GenerateToken(Guid documentId, Guid userId, Guid messageId, bool isDownload)
     {
         // Get token expiration from system configuration
-        var config = _dbContext.SystemConfiguration.FirstOrDefault();
+        var config = _dbContext.SystemConfiguration.Take(1).FirstOrDefault();
         var expirationMinutes = config?.DocumentAccessTokenExpirationMinutes ?? 10;
         var expiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes);
 

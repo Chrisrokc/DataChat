@@ -273,7 +273,7 @@
         {
             // Use a separate DbContext instance to avoid concurrency issues with page components
             await using var dbContext = await DbContextFactory.CreateDbContextAsync();
-            var config = await dbContext.SystemConfiguration.FirstOrDefaultAsync();
+            var config = await dbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync();
             if (config != null && config.AnnouncementEnabled && !string.IsNullOrWhiteSpace(config.AnnouncementMessage))
             {
                 var now = DateTime.UtcNow;

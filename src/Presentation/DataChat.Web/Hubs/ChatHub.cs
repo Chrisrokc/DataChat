@@ -117,7 +117,7 @@ public class ChatHub : Hub
                         .ToDictionaryAsync(d => d.Id, cancellationToken);
 
                     // Get admin settings for document access features
-                    var config = await _dbContext.SystemConfiguration.FirstOrDefaultAsync(cancellationToken);
+                    var config = await _dbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync(cancellationToken);
                     var enableDocumentPreview = config?.EnableDocumentPreview ?? true;
                     var enableDocumentDownload = config?.EnableDocumentDownload ?? true;
 

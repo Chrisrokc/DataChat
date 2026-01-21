@@ -1070,7 +1070,7 @@
 
     private async Task LoadConfiguration()
     {
-        var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync();
+        var config = await DbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync();
         if (config != null)
         {
             if (!string.IsNullOrWhiteSpace(config.AiAssistantName))
@@ -1327,7 +1327,7 @@
                             .ToDictionaryAsync(d => d.Id, _streamingCts.Token);
 
                         // Get admin settings for document access features
-                        var config = await DbContext.SystemConfiguration.FirstOrDefaultAsync(_streamingCts.Token);
+                        var config = await DbContext.SystemConfiguration.Take(1).FirstOrDefaultAsync(_streamingCts.Token);
                         var enableDocumentPreview = config?.EnableDocumentPreview ?? true;
                         var enableDocumentDownload = config?.EnableDocumentDownload ?? true;
 
