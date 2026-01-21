@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using DataChat.Application.Common.Interfaces;
+using DataChat.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,17 +9,17 @@ namespace DataChat.Infrastructure.Identity;
 public class CurrentUserService : ICurrentUserService
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private Guid? _cachedUserId;
     private bool? _cachedIsAdmin;
     private bool? _cachedCanSelectDataSources;
 
     public CurrentUserService(
         IHttpContextAccessor httpContextAccessor,
-        IApplicationDbContext dbContext)
+        IDbContextFactory<ApplicationDbContext> dbContextFactory)
     {
         _httpContextAccessor = httpContextAccessor;
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
     }
 
     public string? WindowsIdentity
@@ -95,7 +96,8 @@ public class CurrentUserService : ICurrentUserService
             // Fall back to looking up by WindowsIdentity
             if (!string.IsNullOrEmpty(WindowsIdentity))
             {
-                var dbUser = _dbContext.Users
+                using var dbContext = _dbContextFactory.CreateDbContext();
+                var dbUser = dbContext.Users
                     .AsNoTracking()
                     .FirstOrDefault(u => u.WindowsIdentity == WindowsIdentity);
 
@@ -107,7 +109,8 @@ public class CurrentUserService : ICurrentUserService
             var username = user.FindFirst("Username")?.Value;
             if (!string.IsNullOrEmpty(username))
             {
-                var dbUser = _dbContext.Users
+                using var dbContext = _dbContextFactory.CreateDbContext();
+                var dbUser = dbContext.Users
                     .AsNoTracking()
                     .FirstOrDefault(u => u.Username == username);
 
@@ -149,8 +152,10 @@ public class CurrentUserService : ICurrentUserService
                 return false;
             }
 
+            using var dbContext = _dbContextFactory.CreateDbContext();
+
             // Check if user has Admin role in database
-            var hasAdminRole = _dbContext.UserRoles
+            var hasAdminRole = dbContext.UserRoles
                 .AsNoTracking()
                 .Any(ur => ur.UserId == UserId.Value &&
                            ur.Role.Name == "Admin");
@@ -165,7 +170,7 @@ public class CurrentUserService : ICurrentUserService
             var userGroupSids = AdGroupSids.ToList();
             if (userGroupSids.Any())
             {
-                hasAdminRole = _dbContext.AdGroupRoleMappings
+                hasAdminRole = dbContext.AdGroupRoleMappings
                     .AsNoTracking()
                     .Any(m => userGroupSids.Contains(m.AdGroupSid) &&
                               m.Role.Name == "Admin");
@@ -196,8 +201,10 @@ public class CurrentUserService : ICurrentUserService
                 return false;
             }
 
+            using var dbContext = _dbContextFactory.CreateDbContext();
+
             // Check user's CanSelectDataSources flag in database
-            var canSelect = _dbContext.Users
+            var canSelect = dbContext.Users
                 .AsNoTracking()
                 .Where(u => u.Id == UserId.Value)
                 .Select(u => u.CanSelectDataSources)
@@ -230,10 +237,12 @@ public class CurrentUserService : ICurrentUserService
         if (!UserId.HasValue)
             return Enumerable.Empty<Guid>();
 
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
         // Admins can access all active data sources (including personal ones)
         if (IsAdmin)
         {
-            return await _dbContext.DataSources
+            return await dbContext.DataSources
                 .AsNoTracking()
                 .Where(d => d.IsActive)
                 .Select(d => d.Id)
@@ -243,7 +252,7 @@ public class CurrentUserService : ICurrentUserService
         var result = new HashSet<Guid>();
 
         // Get data sources user has direct permission to
-        var userPermissions = await _dbContext.UserDataSourcePermissions
+        var userPermissions = await dbContext.UserDataSourcePermissions
             .AsNoTracking()
             .Where(p => p.UserId == UserId.Value && p.CanRead)
             .Select(p => p.DataSourceId)
@@ -256,7 +265,7 @@ public class CurrentUserService : ICurrentUserService
         var userGroupSids = AdGroupSids.ToList();
         if (userGroupSids.Any())
         {
-            var groupPermissions = await _dbContext.AdGroupDataSourcePermissions
+            var groupPermissions = await dbContext.AdGroupDataSourcePermissions
                 .AsNoTracking()
                 .Where(p => userGroupSids.Contains(p.AdGroupSid) && p.CanRead)
                 .Select(p => p.DataSourceId)
@@ -267,7 +276,7 @@ public class CurrentUserService : ICurrentUserService
         }
 
         // Include user's personal data source (owned by them)
-        var personalSourceId = await _dbContext.DataSources
+        var personalSourceId = await dbContext.DataSources
             .AsNoTracking()
             .Where(d => d.OwnerUserId == UserId.Value && d.IsActive)
             .Select(d => d.Id)
