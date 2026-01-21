@@ -57,6 +57,16 @@
                     <FluentBadge BackgroundColor="#d13438" Color="white">Inactive</FluentBadge>
                 }
             </TemplateColumn>
+            <TemplateColumn Title="Data Selector">
+                @if (context.CanSelectDataSources)
+                {
+                    <FluentBadge BackgroundColor="#0078d4" Color="white">Enabled</FluentBadge>
+                }
+                else
+                {
+                    <span style="color: #888;">-</span>
+                }
+            </TemplateColumn>
             <TemplateColumn Title="Last Login" Sortable="true" SortBy="@(GridSort<User>.ByAscending(u => u.LastLoginAt))">
                 @if (context.LastLoginAt.HasValue)
                 {
@@ -118,6 +128,8 @@
                 }
             </div>
             <FluentSwitch @bind-Value="_editModel.IsActive" Label="Active" />
+            <FluentSwitch @bind-Value="_editModel.CanSelectDataSources" Label="Enable Data Source Selector" />
+            <p style="font-size: 12px; color: #666; margin: -8px 0 0 0;">Allow user to select which data sources to search in chat</p>
         </div>
     </FluentDialogBody>
     <FluentDialogFooter>
@@ -203,7 +215,8 @@
             Username = user.Username,
             DisplayName = user.DisplayName,
             Email = user.Email,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            CanSelectDataSources = user.CanSelectDataSources
         };
 
         foreach (var role in _allRoles)
@@ -241,6 +254,7 @@
                 user.DisplayName = _editModel.DisplayName!;
                 user.Email = _editModel.Email;
                 user.IsActive = _editModel.IsActive;
+                user.CanSelectDataSources = _editModel.CanSelectDataSources;
 
                 var existingRoleIds = user.UserRoles.Select(ur => ur.RoleId).ToList();
                 var selectedRoleIds = _allRoles.Where(r => r.IsSelected).Select(r => r.Id).ToList();
@@ -344,6 +358,7 @@
         public string? Password { get; set; }
         public string? ConfirmPassword { get; set; }
         public bool IsActive { get; set; }
+        public bool CanSelectDataSources { get; set; }
     }
 
     private class RoleSelection

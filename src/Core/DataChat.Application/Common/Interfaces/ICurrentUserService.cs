@@ -7,6 +7,7 @@ public interface ICurrentUserService
     Guid? UserId { get; }
     bool IsAuthenticated { get; }
     bool IsAdmin { get; }
+    bool CanSelectDataSources { get; }
     IEnumerable<string> AdGroupSids { get; }
     Task<IEnumerable<Guid>> GetAccessibleDataSourceIdsAsync();
 }

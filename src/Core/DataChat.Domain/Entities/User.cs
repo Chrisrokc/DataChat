@@ -12,6 +12,7 @@ public class User : AuditableEntity
     public string? Email { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginAt { get; set; }
+    public bool CanSelectDataSources { get; set; } = false; // Allow user to select data sources in chat (admin feature)
 
     // Navigation properties
     public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();

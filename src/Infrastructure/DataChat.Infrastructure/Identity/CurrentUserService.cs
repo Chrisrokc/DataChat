@@ -11,6 +11,7 @@ public class CurrentUserService : ICurrentUserService
     private readonly IApplicationDbContext _dbContext;
     private Guid? _cachedUserId;
     private bool? _cachedIsAdmin;
+    private bool? _cachedCanSelectDataSources;
 
     public CurrentUserService(
         IHttpContextAccessor httpContextAccessor,
@@ -172,6 +173,38 @@ public class CurrentUserService : ICurrentUserService
 
             _cachedIsAdmin = hasAdminRole;
             return hasAdminRole;
+        }
+    }
+
+    public bool CanSelectDataSources
+    {
+        get
+        {
+            if (_cachedCanSelectDataSources.HasValue)
+                return _cachedCanSelectDataSources.Value;
+
+            // Admins always have data source selector access
+            if (IsAdmin)
+            {
+                _cachedCanSelectDataSources = true;
+                return true;
+            }
+
+            if (!UserId.HasValue)
+            {
+                _cachedCanSelectDataSources = false;
+                return false;
+            }
+
+            // Check user's CanSelectDataSources flag in database
+            var canSelect = _dbContext.Users
+                .AsNoTracking()
+                .Where(u => u.Id == UserId.Value)
+                .Select(u => u.CanSelectDataSources)
+                .FirstOrDefault();
+
+            _cachedCanSelectDataSources = canSelect;
+            return canSelect;
         }
     }
 

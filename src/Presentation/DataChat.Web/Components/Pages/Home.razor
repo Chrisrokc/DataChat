@@ -733,8 +733,8 @@
                      @ondragleave="HandleDragLeave" @ondragleave:preventDefault
                      @ondragover:preventDefault
                      @ondrop="HandleDrop" @ondrop:preventDefault>
-                    @* Data Source Selector - only show if multiple sources available *@
-                    @if (_availableDataSources.Count > 1)
+                    @* Data Source Selector - only show if multiple sources available and user has permission *@
+                    @if (_availableDataSources.Count > 1 && CurrentUser.CanSelectDataSources)
                     {
                         <div class="datasource-selector">
                             <div class="upload-btn"
