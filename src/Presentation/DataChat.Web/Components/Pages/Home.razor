@@ -1286,7 +1286,9 @@
             var sourceChunks = new List<SourceChunkDto>();
 
             // Use selected data sources, filtered by user's access permissions
-            var effectiveDataSourceIds = _selectedDataSourceIds.Any()
+            // If user has data source selector and cleared all, respect that (use none)
+            // If user doesn't have selector, use all accessible sources
+            var effectiveDataSourceIds = CurrentUser.CanSelectDataSources
                 ? _selectedDataSourceIds.Intersect(accessibleDataSourceIds).ToList()
                 : accessibleDataSourceIds.ToList();
 
@@ -1707,7 +1709,9 @@
             var lastUserMessage = _messages.LastOrDefault(m => m.Role == MessageRole.User);
 
             // Use selected data sources, filtered by user's access permissions
-            var effectiveDataSourceIds = _selectedDataSourceIds.Any()
+            // If user has data source selector and cleared all, respect that (use none)
+            // If user doesn't have selector, use all accessible sources
+            var effectiveDataSourceIds = CurrentUser.CanSelectDataSources
                 ? _selectedDataSourceIds.Intersect(accessibleDataSourceIds).ToList()
                 : accessibleDataSourceIds.ToList();
 
