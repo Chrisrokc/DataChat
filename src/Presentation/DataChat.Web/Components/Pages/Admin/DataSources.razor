@@ -6,6 +6,7 @@
 @inject IDatabaseConnectionService ConnectionService
 @inject ISecureConfigurationService SecureConfig
 @inject ICurrentUserService CurrentUser
+@inject IAuditService AuditService
 @inject IToastService ToastService
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
@@ -811,6 +812,35 @@ else
             }
 
             await DbContext.SaveChangesAsync();
+
+            // Audit log
+            if (_isEditingDataSource)
+            {
+                await AuditService.LogAsync(
+                    AuditActions.DataSourceUpdated,
+                    "DataSource",
+                    dataSource.Id.ToString(),
+                    newValues: new {
+                        Name = dataSource.Name,
+                        Type = dataSource.Type.ToString(),
+                        Description = dataSource.Description,
+                        IsActive = dataSource.IsActive
+                    });
+            }
+            else
+            {
+                await AuditService.LogAsync(
+                    AuditActions.DataSourceCreated,
+                    "DataSource",
+                    dataSource.Id.ToString(),
+                    newValues: new {
+                        Name = dataSource.Name,
+                        Type = dataSource.Type.ToString(),
+                        Description = dataSource.Description,
+                        IsActive = dataSource.IsActive
+                    });
+            }
+
             ToastService.ShowSuccess(_isEditingDataSource ? "Data source updated!" : "Data source created!");
             CloseDataSourceDialog();
             await LoadDataSources();
@@ -838,8 +868,21 @@ else
 
         try
         {
+            // Capture info before deleting
+            var dsId = ds.Id.ToString();
+            var dsName = ds.Name;
+            var dsType = ds.Type.ToString();
+
             DbContext.DataSources.Remove(ds);
             await DbContext.SaveChangesAsync();
+
+            // Audit log
+            await AuditService.LogAsync(
+                AuditActions.DataSourceDeleted,
+                "DataSource",
+                dsId,
+                oldValues: new { Name = dsName, Type = dsType });
+
             ToastService.ShowSuccess("Data source deleted!");
             await LoadDataSources();
         }

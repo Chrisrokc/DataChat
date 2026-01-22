@@ -8,10 +8,12 @@ namespace DataChat.Infrastructure.Identity;
 public class AuthenticationService : IAuthenticationService
 {
     private readonly IApplicationDbContext _context;
+    private readonly IAuditService _auditService;
 
-    public AuthenticationService(IApplicationDbContext context)
+    public AuthenticationService(IApplicationDbContext context, IAuditService auditService)
     {
         _context = context;
+        _auditService = auditService;
     }
 
     public async Task<AuthenticationResult> AuthenticateAsync(string username, string password)
@@ -23,22 +25,54 @@ public class AuthenticationService : IAuthenticationService
 
         if (user == null)
         {
+            // Log failed login attempt (user not found)
+            await _auditService.LogAsync(
+                userId: null,
+                action: AuditActions.LoginFailed,
+                entityType: "User",
+                entityId: username,
+                newValues: new { Reason = "User not found or inactive" });
+
             return new AuthenticationResult(false, ErrorMessage: "Invalid username or password");
         }
 
         if (string.IsNullOrEmpty(user.PasswordHash))
         {
+            // Log failed login attempt (wrong auth type)
+            await _auditService.LogAsync(
+                userId: user.Id,
+                action: AuditActions.LoginFailed,
+                entityType: "User",
+                entityId: user.Id.ToString(),
+                newValues: new { Reason = "Account uses Windows Authentication" });
+
             return new AuthenticationResult(false, ErrorMessage: "This account uses Windows Authentication");
         }
 
         if (!VerifyPassword(password, user.PasswordHash))
         {
+            // Log failed login attempt (wrong password)
+            await _auditService.LogAsync(
+                userId: user.Id,
+                action: AuditActions.LoginFailed,
+                entityType: "User",
+                entityId: user.Id.ToString(),
+                newValues: new { Reason = "Invalid password" });
+
             return new AuthenticationResult(false, ErrorMessage: "Invalid username or password");
         }
 
         // Update last login timestamp
         user.LastLoginAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        // Log successful login
+        await _auditService.LogAsync(
+            userId: user.Id,
+            action: AuditActions.Login,
+            entityType: "User",
+            entityId: user.Id.ToString(),
+            newValues: new { Username = user.Username, DisplayName = user.DisplayName });
 
         var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
 

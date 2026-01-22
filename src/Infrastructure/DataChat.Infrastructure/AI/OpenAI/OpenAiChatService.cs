@@ -17,15 +17,18 @@ public class OpenAiChatService : IAiChatService
 {
     private readonly IApplicationDbContext _dbContext;
     private readonly ISecureConfigurationService _secureConfig;
+    private readonly IAiResiliencePipeline _resilience;
     private readonly ILogger<OpenAiChatService> _logger;
 
     public OpenAiChatService(
         IApplicationDbContext dbContext,
         ISecureConfigurationService secureConfig,
+        IAiResiliencePipeline resilience,
         ILogger<OpenAiChatService> logger)
     {
         _dbContext = dbContext;
         _secureConfig = secureConfig;
+        _resilience = resilience;
         _logger = logger;
     }
 
@@ -38,7 +41,10 @@ public class OpenAiChatService : IAiChatService
 
         var messages = BuildMessages(conversationHistory, systemPrompt);
 
-        var completion = await client.CompleteChatAsync(messages, options, cancellationToken);
+        // Execute with resilience (retry + circuit breaker)
+        var completion = await _resilience.ExecuteAsync(
+            async ct => await client.CompleteChatAsync(messages, options, ct),
+            cancellationToken);
 
         return completion.Value.Content[0].Text;
     }
@@ -52,6 +58,21 @@ public class OpenAiChatService : IAiChatService
 
         var messages = BuildMessages(conversationHistory, systemPrompt);
 
+        // Execute streaming with circuit breaker protection
+        await foreach (var chunk in _resilience.ExecuteStreamAsync(
+            ct => StreamFromClient(client, messages, options, ct),
+            cancellationToken))
+        {
+            yield return chunk;
+        }
+    }
+
+    private static async IAsyncEnumerable<string> StreamFromClient(
+        ChatClient client,
+        List<ChatMessage> messages,
+        ChatCompletionOptions options,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         await foreach (var update in client.CompleteChatStreamingAsync(messages, options, cancellationToken))
         {
             foreach (var contentPart in update.ContentUpdate)

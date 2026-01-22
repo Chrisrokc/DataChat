@@ -1,14 +1,22 @@
+using System.Text.Json;
+using System.Threading.RateLimiting;
 using DataChat.Application;
+using DataChat.Application.Common.Interfaces;
 using DataChat.Infrastructure;
 using DataChat.Web.Authentication;
 using DataChat.Web.Components;
+using DataChat.Web.HealthChecks;
 using DataChat.Web.Hubs;
+using DataChat.Web.Middleware;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.FluentUI.AspNetCore.Components;
 using Serilog;
 
@@ -25,7 +33,8 @@ try
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
-        .WriteTo.Console());
+        .Enrich.WithMachineName()
+        .Enrich.WithThreadId());
 
     // Add Application and Infrastructure layers
     builder.Services.AddApplication();
@@ -34,11 +43,49 @@ try
     // Add FluentUI
     builder.Services.AddFluentUIComponents();
 
-    // Add SignalR
-    builder.Services.AddSignalR();
+    // Add SignalR with configuration for scale
+    builder.Services.AddSignalR(options =>
+    {
+        // Allow messages up to 64KB to support validation of large messages
+        // (validation will reject messages > 32KB, but we need to receive them first)
+        options.MaximumReceiveMessageSize = 64 * 1024;
+        options.StreamBufferCapacity = 20;
+        options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+        options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+    });
+
+    // Add Rate Limiting for security
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        // Strict rate limit for login attempts (5 attempts per 15 minutes per IP)
+        options.AddFixedWindowLimiter("login", config =>
+        {
+            config.Window = TimeSpan.FromMinutes(15);
+            config.PermitLimit = 5;
+            config.QueueLimit = 0;
+        });
+
+        // General API rate limit (100 requests per minute per IP)
+        options.AddSlidingWindowLimiter("api", config =>
+        {
+            config.Window = TimeSpan.FromMinutes(1);
+            config.SegmentsPerWindow = 6;
+            config.PermitLimit = 100;
+        });
+    });
 
     // Add HttpContextAccessor for Blazor
     builder.Services.AddHttpContextAccessor();
+
+    // Health checks for monitoring
+    builder.Services.AddHealthChecks()
+        .AddCheck("database", new DatabaseHealthCheck(
+            builder.Configuration.GetConnectionString("DefaultConnection") ?? ""),
+            HealthStatus.Unhealthy,
+            new[] { "db", "ready" });
 
     // Data Protection - configure with stable key storage
     var keysDirectory = Path.Combine(Directory.GetCurrentDirectory(), "data-protection-keys");
@@ -178,6 +225,13 @@ try
     }
 
     app.UseHttpsRedirection();
+
+    // Add security headers to all responses
+    app.UseSecurityHeaders();
+
+    // Add correlation ID for request tracing
+    app.UseCorrelationId();
+
     app.UseStaticFiles();
 
     app.UseAuthentication();
@@ -242,6 +296,8 @@ try
 
     app.UseAuthorization();
 
+    app.UseRateLimiter();
+
     app.UseAntiforgery();
 
     // Map login endpoint (POST)
@@ -298,11 +354,24 @@ try
             Log.Warning("Login failed for {Username}: {Error}", username, result.ErrorMessage);
             return Results.Redirect($"/login?error={Uri.EscapeDataString(result.ErrorMessage ?? "Invalid credentials")}");
         }
-    }).AllowAnonymous().DisableAntiforgery();
+    }).AllowAnonymous().DisableAntiforgery().RequireRateLimiting("login");
 
     // Map logout endpoint
-    app.MapGet("/logout", async (HttpContext context) =>
+    app.MapGet("/logout", async (HttpContext context, IAuditService auditService) =>
     {
+        // Log logout before signing out (while we still have user context)
+        var userId = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var username = context.User?.Identity?.Name;
+        if (!string.IsNullOrEmpty(userId) && Guid.TryParse(userId, out var userGuid))
+        {
+            await auditService.LogAsync(
+                userGuid,
+                AuditActions.Logout,
+                "User",
+                userId,
+                newValues: new { Username = username });
+        }
+
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return Results.Redirect("/login");
     }).AllowAnonymous();
@@ -478,6 +547,54 @@ try
 
         return Results.File(document.FilePath, mimeType);
     }).RequireAuthorization();
+
+    // Health check endpoints
+    app.MapHealthChecks("/health", new HealthCheckOptions
+    {
+        Predicate = _ => true,
+        ResponseWriter = async (context, report) =>
+        {
+            context.Response.ContentType = "application/json";
+            var result = JsonSerializer.Serialize(new
+            {
+                status = report.Status.ToString(),
+                totalDuration = report.TotalDuration.TotalMilliseconds,
+                checks = report.Entries.Select(e => new
+                {
+                    name = e.Key,
+                    status = e.Value.Status.ToString(),
+                    duration = e.Value.Duration.TotalMilliseconds,
+                    description = e.Value.Description,
+                    exception = e.Value.Exception?.Message
+                })
+            });
+            await context.Response.WriteAsync(result);
+        }
+    }).AllowAnonymous();
+
+    app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = _ => false
+    }).AllowAnonymous();
+
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready"),
+        ResponseWriter = async (context, report) =>
+        {
+            context.Response.ContentType = "application/json";
+            var result = JsonSerializer.Serialize(new
+            {
+                status = report.Status.ToString(),
+                checks = report.Entries.Select(e => new
+                {
+                    name = e.Key,
+                    status = e.Value.Status.ToString()
+                })
+            });
+            await context.Response.WriteAsync(result);
+        }
+    }).AllowAnonymous();
 
     // Map SignalR Hub
     app.MapHub<ChatHub>("/chathub");

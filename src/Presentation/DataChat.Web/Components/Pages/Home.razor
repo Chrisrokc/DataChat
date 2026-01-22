@@ -17,6 +17,7 @@
 @inject NavigationManager Navigation
 @inject IToastService ToastService
 @inject IJSRuntime JSRuntime
+@inject ILogger<Home> Logger
 @implements IDisposable
 
 <PageTitle>Enterprise Chat</PageTitle>
@@ -672,7 +673,7 @@
                             </div>
                         </div>
                     }
-                    @if (_isStreaming)
+                    @if (_isStreaming && _streamingChatId == _selectedChat?.Id)
                     {
                         <div class="chat-bubble assistant">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
@@ -790,6 +791,7 @@
                               @onkeydown="HandleKeyDown"
                               placeholder="@(_pendingAttachments.Any() ? "Add a message about this file..." : "Ask a work question or make a request")"
                               rows="1"
+                              maxlength="@MaxMessageLength"
                               disabled="@_isStreaming"
                               style="flex: 1; border: none; background: transparent; font-size: 15px; outline: none; resize: none; font-family: inherit; min-height: 24px; max-height: 120px;"></textarea>
                     <button @onclick="SendMessage"
@@ -972,6 +974,7 @@
     private string _userInput = "";
     private bool _isStreaming;
     private string _streamingContent = "";
+    private Guid? _streamingChatId; // Track which chat the streaming belongs to
     private ElementReference _messagesContainer;
     private CancellationTokenSource? _streamingCts;
     private string _aiAssistantName = "Assistant";
@@ -1151,7 +1154,12 @@
 
     private async Task SelectChat(ChatDto chat)
     {
+        // Don't cancel streaming when switching chats - let it continue in background
+        // The streaming will still save to the correct chat, just won't be visible here
         _selectedChat = chat;
+
+        // Always reload messages - this ensures we get any messages that were
+        // saved while we were viewing a different chat
         await LoadMessages();
     }
 
@@ -1159,6 +1167,15 @@
     {
         try
         {
+            // Cancel streaming if deleting the chat that's currently streaming
+            if (_isStreaming && _streamingChatId == chat.Id)
+            {
+                _streamingCts?.Cancel();
+                _isStreaming = false;
+                _streamingContent = "";
+                _streamingChatId = null;
+            }
+
             // Delete from database
             var chatEntity = await DbContext.Chats
                 .Include(c => c.Messages)
@@ -1226,10 +1243,36 @@
         }
     }
 
+    private const int MaxMessageLength = 32000;
+
     private async Task SendMessage()
     {
         if (_selectedChat == null || (string.IsNullOrWhiteSpace(_userInput) && !_pendingAttachments.Any()))
             return;
+
+        // Generate correlation ID for request tracing
+        var correlationId = Guid.NewGuid().ToString("N")[..8];
+        var chatId = _selectedChat.Id;
+        var userId = CurrentUser.UserId ?? Guid.Empty;
+
+        using var logScope = Logger.BeginScope(new Dictionary<string, object>
+        {
+            ["CorrelationId"] = correlationId,
+            ["ChatId"] = chatId,
+            ["UserId"] = userId
+        });
+
+        Logger.LogInformation("Starting chat message. MessageLength: {MessageLength}, HasAttachments: {HasAttachments}",
+            _userInput?.Length ?? 0, _pendingAttachments.Any());
+
+        // Client-side validation for message length
+        if (_userInput?.Length > MaxMessageLength)
+        {
+            Logger.LogWarning("Message rejected: exceeds max length. Length: {Length}, Max: {Max}",
+                _userInput.Length, MaxMessageLength);
+            ToastService.ShowError($"Message exceeds maximum length of {MaxMessageLength:N0} characters. Current length: {_userInput.Length:N0}");
+            return;
+        }
 
         // Close data source dropdown if open
         _showDataSourceDropdown = false;
@@ -1240,6 +1283,7 @@
         _pendingAttachments.Clear();
         _isStreaming = true;
         _streamingContent = "";
+        _streamingChatId = _selectedChat.Id; // Track which chat is streaming
         _streamingCts = new CancellationTokenSource();
 
         // Add user message to display immediately (with attachments)
@@ -1297,6 +1341,8 @@
 
             if (effectiveDataSourceIds.Any())
             {
+                Logger.LogDebug("Starting RAG search. DataSourceCount: {DataSourceCount}", effectiveDataSourceIds.Count);
+
                 try
                 {
                     // Generate embedding for user's question
@@ -1308,6 +1354,8 @@
                         topK: 5,
                         effectiveDataSourceIds,
                         _streamingCts.Token);
+
+                    Logger.LogDebug("RAG search complete. ResultCount: {ResultCount}", searchResults.Count());
 
                     if (searchResults.Any())
                     {
@@ -1335,7 +1383,7 @@
 
                         // Generate message ID for token generation
                         var tempMessageId = Guid.NewGuid();
-                        var userId = CurrentUser.UserId!.Value;
+                        var currentUserId = CurrentUser.UserId!.Value;
 
                         sourceChunks = searchResults.Select(r =>
                         {
@@ -1349,9 +1397,9 @@
                             if (isFileSystem)
                             {
                                 if (enableDocumentPreview)
-                                    viewToken = TokenService.GenerateToken(r.DocumentId, userId, tempMessageId, isDownload: false);
+                                    viewToken = TokenService.GenerateToken(r.DocumentId, currentUserId, tempMessageId, isDownload: false);
                                 if (enableDocumentDownload)
-                                    downloadToken = TokenService.GenerateToken(r.DocumentId, userId, tempMessageId, isDownload: true);
+                                    downloadToken = TokenService.GenerateToken(r.DocumentId, currentUserId, tempMessageId, isDownload: true);
                             }
 
                             return new SourceChunkDto(
@@ -1395,6 +1443,7 @@
             systemPrompt = BuildSystemPromptWithMemories(systemPrompt, userMemories);
 
             // Stream response directly from AI service
+            Logger.LogInformation("Starting AI response stream");
             var responseBuilder = new System.Text.StringBuilder();
             await foreach (var chunk in AiChatService.StreamResponseAsync(
                 conversationHistory,
@@ -1406,13 +1455,16 @@
                 StateHasChanged();
             }
 
-            // Save assistant message
+            Logger.LogInformation("AI response stream complete. ResponseLength: {ResponseLength}",
+                _streamingContent?.Length ?? 0);
+
+            // Save assistant message (use captured chatId to handle chat switching during stream)
             if (!string.IsNullOrEmpty(_streamingContent))
             {
                 var assistantMsg = new ChatMessage
                 {
                     Id = Guid.NewGuid(),
-                    ChatId = _selectedChat.Id,
+                    ChatId = chatId,  // Use captured chatId, not _selectedChat.Id
                     Role = MessageRole.Assistant,
                     Content = _streamingContent,
                     SourceChunksJson = sourceChunks.Any() ? JsonSerializer.Serialize(sourceChunks) : null,
@@ -1420,8 +1472,8 @@
                 };
                 DbContext.ChatMessages.Add(assistantMsg);
 
-                // Update chat title if first message
-                var chat = await DbContext.Chats.FindAsync(_selectedChat.Id);
+                // Update chat title if first message (use captured chatId)
+                var chat = await DbContext.Chats.FindAsync(chatId);
                 if (chat != null && chat.Title == "New Chat")
                 {
                     chat.Title = userMessage.Length > 50 ? userMessage[..50] + "..." : userMessage;
@@ -1430,15 +1482,19 @@
 
                 await DbContext.SaveChangesAsync(_streamingCts.Token);
 
-                // Add to local messages list with source chunks
-                _messages.Add(new ChatMessageDto(
-                    assistantMsg.Id,
-                    MessageRole.Assistant,
-                    _streamingContent,
-                    assistantMsg.CreatedAt,
-                    null,
-                    null,
-                    sourceChunks.Any() ? sourceChunks : null));
+                // Only add to local messages list if still viewing the same chat
+                // If user switched chats, the message is already saved to DB and will load when they switch back
+                if (_selectedChat?.Id == chatId)
+                {
+                    _messages.Add(new ChatMessageDto(
+                        assistantMsg.Id,
+                        MessageRole.Assistant,
+                        _streamingContent,
+                        assistantMsg.CreatedAt,
+                        null,
+                        null,
+                        sourceChunks.Any() ? sourceChunks : null));
+                }
             }
 
             // Reload chat list to update titles
@@ -1446,16 +1502,18 @@
         }
         catch (OperationCanceledException)
         {
-            // User cancelled - that's okay
+            Logger.LogInformation("Chat message cancelled by user");
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Error processing chat message");
             ToastService.ShowError($"Error: {ex.Message}");
         }
         finally
         {
             _isStreaming = false;
             _streamingContent = "";
+            _streamingChatId = null;
             _streamingCts?.Dispose();
             _streamingCts = null;
             StateHasChanged();
@@ -1691,8 +1749,12 @@
     {
         if (_selectedChat == null || !_messages.Any()) return;
 
+        // Capture chatId at start to handle chat switching during stream
+        var chatId = _selectedChat.Id;
+
         _isStreaming = true;
         _streamingContent = "";
+        _streamingChatId = chatId; // Track which chat is streaming
         _streamingCts = new CancellationTokenSource();
         StateHasChanged();
 
@@ -1750,13 +1812,13 @@
                 StateHasChanged();
             }
 
-            // Save assistant message
+            // Save assistant message (use captured chatId to handle chat switching during stream)
             if (!string.IsNullOrEmpty(_streamingContent))
             {
                 var assistantMsg = new ChatMessage
                 {
                     Id = Guid.NewGuid(),
-                    ChatId = _selectedChat.Id,
+                    ChatId = chatId,  // Use captured chatId, not _selectedChat.Id
                     Role = MessageRole.Assistant,
                     Content = _streamingContent,
                     CreatedAt = DateTimeService.UtcNow
@@ -1764,11 +1826,15 @@
                 DbContext.ChatMessages.Add(assistantMsg);
                 await DbContext.SaveChangesAsync(_streamingCts.Token);
 
-                _messages.Add(new ChatMessageDto(
-                    assistantMsg.Id,
-                    MessageRole.Assistant,
-                    _streamingContent,
-                    assistantMsg.CreatedAt));
+                // Only add to local messages list if still viewing the same chat
+                if (_selectedChat?.Id == chatId)
+                {
+                    _messages.Add(new ChatMessageDto(
+                        assistantMsg.Id,
+                        MessageRole.Assistant,
+                        _streamingContent,
+                        assistantMsg.CreatedAt));
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -1780,6 +1846,7 @@
         {
             _isStreaming = false;
             _streamingContent = "";
+            _streamingChatId = null;
             _streamingCts?.Dispose();
             _streamingCts = null;
             StateHasChanged();

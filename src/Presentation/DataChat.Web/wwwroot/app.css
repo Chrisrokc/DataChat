@@ -487,6 +487,8 @@ h1:focus {
     height: 56px;
     display: flex;
     align-items: center;
+    position: relative;
+    z-index: 1000;
 }
 
 /* Main content area */

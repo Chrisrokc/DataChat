@@ -19,6 +19,8 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageReference Include="OpenAI" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.10.0" />
+    <PackageReference Include="Polly" Version="8.5.0" />
     <PackageReference Include="PdfPig" Version="0.1.13" />
     <PackageReference Include="PDFtoImage" Version="5.2.0" />
     <PackageReference Include="Tesseract" Version="5.2.0" />

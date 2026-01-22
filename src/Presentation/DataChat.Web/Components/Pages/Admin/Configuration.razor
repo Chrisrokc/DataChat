@@ -6,6 +6,7 @@
 @inject IApplicationDbContext DbContext
 @inject ISecureConfigurationService SecureConfig
 @inject IAiServiceFactory AiServiceFactory
+@inject IAuditService AuditService
 @inject IToastService ToastService
 @inject ILogger<Configuration> Logger
 
@@ -876,6 +877,19 @@
             _config.UpdatedAt = DateTime.UtcNow;
             await DbContext.SaveChangesAsync();
 
+            // Audit log (don't log actual password)
+            await AuditService.LogAsync(
+                AuditActions.ConfigurationChanged,
+                "SystemConfiguration",
+                _config.Id.ToString(),
+                newValues: new {
+                    Section = "SQL Server",
+                    Host = _config.SqlServerHost,
+                    Database = _config.SqlServerDatabase,
+                    UseIntegratedSecurity = _config.SqlServerUseIntegratedSecurity,
+                    PasswordChanged = !string.IsNullOrWhiteSpace(_sqlPassword)
+                });
+
             ToastService.ShowSuccess("SQL Server settings saved successfully!");
             _sqlPassword = ""; // Clear password field
         }
@@ -982,7 +996,27 @@
                 Logger.LogError(ex, "Embedding model test failed");
             }
 
-            // 5. Show final status
+            // 5. Audit log the AI settings change
+            await AuditService.LogAsync(
+                AuditActions.ConfigurationChanged,
+                "SystemConfiguration",
+                _config.Id.ToString(),
+                newValues: new {
+                    Section = "AI Settings",
+                    Provider = _config.LlmProvider.ToString(),
+                    ChatModel = _config.LlmProvider switch {
+                        LlmProvider.OpenAI => _config.OpenAiModel,
+                        LlmProvider.AzureOpenAI => _config.AzureOpenAiDeploymentName,
+                        LlmProvider.Ollama => _config.OllamaModel,
+                        _ => "Unknown"
+                    },
+                    MaxTokens = _config.MaxTokensPerRequest,
+                    Temperature = _config.Temperature,
+                    ChatTestPassed = _chatTestPassed,
+                    EmbeddingTestPassed = _embeddingTestPassed
+                });
+
+            // 6. Show final status
             if (_chatTestPassed && _embeddingTestPassed)
             {
                 _testStatus = "All tests passed! Settings saved successfully.";
@@ -1163,6 +1197,22 @@
         {
             _config.UpdatedAt = DateTime.UtcNow;
             await DbContext.SaveChangesAsync();
+
+            // Audit log
+            await AuditService.LogAsync(
+                AuditActions.ConfigurationChanged,
+                "SystemConfiguration",
+                _config.Id.ToString(),
+                newValues: new {
+                    Section = "RAG Settings",
+                    EnableSourcePreview = _config.EnableSourcePreview,
+                    EnableDocumentPreview = _config.EnableDocumentPreview,
+                    EnableDocumentDownload = _config.EnableDocumentDownload,
+                    DocumentAccessTokenExpirationMinutes = _config.DocumentAccessTokenExpirationMinutes,
+                    SourcePreviewMinRelevance = _config.SourcePreviewMinRelevance,
+                    SourcePreviewMaxSources = _config.SourcePreviewMaxSources
+                });
+
             ToastService.ShowSuccess("RAG settings saved successfully!");
         }
         catch (Exception ex)
@@ -1185,6 +1235,20 @@
         {
             _config.UpdatedAt = DateTime.UtcNow;
             await DbContext.SaveChangesAsync();
+
+            // Audit log
+            await AuditService.LogAsync(
+                AuditActions.ConfigurationChanged,
+                "SystemConfiguration",
+                _config.Id.ToString(),
+                newValues: new {
+                    Section = "Authentication",
+                    AuthenticationMode = _config.AuthenticationMode,
+                    WindowsAuthAutoProvisionUsers = _config.WindowsAuthAutoProvisionUsers,
+                    WindowsAuthDefaultRole = _config.WindowsAuthDefaultRole,
+                    WindowsAuthAllowedDomains = _config.WindowsAuthAllowedDomains
+                });
+
             ToastService.ShowSuccess("Authentication settings saved. Restart the application for changes to take effect.");
         }
         catch (Exception ex)

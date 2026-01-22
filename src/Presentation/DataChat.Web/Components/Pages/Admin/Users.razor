@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = "AdminOnly")]
 @inject IApplicationDbContext DbContext
 @inject IAuthenticationService AuthService
+@inject IAuditService AuditService
 @inject IToastService ToastService
 @inject IDialogService DialogService
 @inject ILogger<Users> Logger
@@ -305,6 +306,39 @@
             }
 
             await DbContext.SaveChangesAsync();
+
+            // Audit log
+            var selectedRoles = _allRoles.Where(r => r.IsSelected).Select(r => r.Name).ToList();
+            if (_isEditing)
+            {
+                await AuditService.LogAsync(
+                    AuditActions.UserUpdated,
+                    "User",
+                    user.Id.ToString(),
+                    newValues: new {
+                        Username = user.Username,
+                        DisplayName = user.DisplayName,
+                        Email = user.Email,
+                        IsActive = user.IsActive,
+                        CanSelectDataSources = user.CanSelectDataSources,
+                        Roles = selectedRoles
+                    });
+            }
+            else
+            {
+                await AuditService.LogAsync(
+                    AuditActions.UserCreated,
+                    "User",
+                    user.Id.ToString(),
+                    newValues: new {
+                        Username = user.Username,
+                        DisplayName = user.DisplayName,
+                        Email = user.Email,
+                        IsActive = user.IsActive,
+                        Roles = selectedRoles
+                    });
+            }
+
             ToastService.ShowSuccess(_isEditing ? "User updated!" : "User created!");
             CloseDialog();
             await LoadUsers();
@@ -336,9 +370,18 @@
             var dbUser = await DbContext.Users.FindAsync(user.Id);
             if (dbUser != null)
             {
+                var oldStatus = dbUser.IsActive;
                 dbUser.IsActive = !dbUser.IsActive;
                 await DbContext.SaveChangesAsync();
                 user.IsActive = dbUser.IsActive;
+
+                // Audit log
+                await AuditService.LogAsync(
+                    AuditActions.UserUpdated,
+                    "User",
+                    user.Id.ToString(),
+                    oldValues: new { IsActive = oldStatus },
+                    newValues: new { IsActive = dbUser.IsActive, Action = action });
             }
             ToastService.ShowSuccess($"User {action}d successfully!");
             StateHasChanged();

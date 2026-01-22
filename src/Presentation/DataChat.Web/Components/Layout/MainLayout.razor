@@ -99,11 +99,23 @@
 
         <AuthorizeView>
             <Authorized>
-                <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px; position: relative;">
                     <span style="color: #666; font-size: 14px;">@context.User.Identity?.Name</span>
-                    <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">
+                    <button @onclick="ToggleUserMenu" @onclick:stopPropagation="true"
+                            style="width: 32px; height: 32px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px; border: none; cursor: pointer;">
                         @(context.User.Identity?.Name?.Substring(0, 1).ToUpper() ?? "U")
-                    </div>
+                    </button>
+                    @if (_showUserMenu)
+                    {
+                        <div class="user-menu-dropdown" @onclick:stopPropagation="true">
+                            <a href="/logout" class="user-menu-item">
+                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H3zm11 4.414l-4.293 4.293a1 1 0 01-1.414-1.414L11.586 7H6a1 1 0 010-2h8a1 1 0 011 1v8a1 1 0 11-2 0V7.414z"/>
+                                </svg>
+                                Sign out
+                            </a>
+                        </div>
+                    }
                 </div>
             </Authorized>
         </AuthorizeView>
@@ -215,11 +227,46 @@
     .announcement-dismiss:hover {
         opacity: 1;
     }
+
+    /* User menu dropdown */
+    .user-menu-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 8px;
+        background: var(--neutral-layer-floating);
+        border: 1px solid var(--neutral-stroke-rest);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        min-width: 160px;
+        z-index: 10000;
+        overflow: hidden;
+    }
+
+    .user-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        color: var(--neutral-foreground-rest);
+        text-decoration: none;
+        font-size: 14px;
+        transition: background 0.15s;
+    }
+
+    .user-menu-item:hover {
+        background: var(--neutral-fill-stealth-hover);
+    }
+
+    .user-menu-item svg {
+        opacity: 0.7;
+    }
 </style>
 
 @code {
     private bool _drawerOpen = true;
     private DesignThemeModes _themeMode = DesignThemeModes.Light;
+    private bool _showUserMenu;
 
     // Branding state
     private string _applicationName = "DataChat";
@@ -232,6 +279,8 @@
     private string _announcementType = "info";
     private bool _announcementDismissible = true;
     private bool _announcementDismissed;
+
+    private void ToggleUserMenu() => _showUserMenu = !_showUserMenu;
 
     protected override async Task OnInitializedAsync()
     {

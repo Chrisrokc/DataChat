@@ -10,6 +10,7 @@ public class OpenAiEmbeddingService : IEmbeddingService
 {
     private readonly IApplicationDbContext _dbContext;
     private readonly ISecureConfigurationService _secureConfig;
+    private readonly IAiResiliencePipeline _resilience;
     private readonly ILogger<OpenAiEmbeddingService> _logger;
 
     // text-embedding-ada-002 and text-embedding-3-small/large have 8192 token limit
@@ -20,10 +21,12 @@ public class OpenAiEmbeddingService : IEmbeddingService
     public OpenAiEmbeddingService(
         IApplicationDbContext dbContext,
         ISecureConfigurationService secureConfig,
+        IAiResiliencePipeline resilience,
         ILogger<OpenAiEmbeddingService> logger)
     {
         _dbContext = dbContext;
         _secureConfig = secureConfig;
+        _resilience = resilience;
         _logger = logger;
     }
 
@@ -36,7 +39,10 @@ public class OpenAiEmbeddingService : IEmbeddingService
         // Truncate text if it exceeds token limit
         var truncatedText = TruncateToTokenLimit(text);
 
-        var embedding = await client.GenerateEmbeddingAsync(truncatedText, cancellationToken: cancellationToken);
+        // Execute with resilience (retry + circuit breaker)
+        var embedding = await _resilience.ExecuteAsync(
+            async ct => await client.GenerateEmbeddingAsync(truncatedText, cancellationToken: ct),
+            cancellationToken);
 
         return embedding.Value.ToFloats().ToArray();
     }
@@ -60,7 +66,11 @@ public class OpenAiEmbeddingService : IEmbeddingService
         for (int i = 0; i < textList.Count; i += batchSize)
         {
             var batch = textList.Skip(i).Take(batchSize).ToList();
-            var embeddings = await client.GenerateEmbeddingsAsync(batch, cancellationToken: cancellationToken);
+
+            // Execute with resilience (retry + circuit breaker)
+            var embeddings = await _resilience.ExecuteAsync(
+                async ct => await client.GenerateEmbeddingsAsync(batch, cancellationToken: ct),
+                cancellationToken);
 
             foreach (var embedding in embeddings.Value)
             {

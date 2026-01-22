@@ -75,7 +75,24 @@ cd DataChat
 
 ### 2. Configure the Database Connection
 
-Edit `src/Presentation/DataChat.Web/appsettings.json`:
+**Option A: Environment Variable (Recommended for Production)**
+
+Set the connection string via environment variable to avoid storing credentials in config files:
+
+```bash
+# Linux/macOS
+export ConnectionStrings__DefaultConnection="Server=YOUR_SERVER;Database=DataChat;User Id=sa;Password=YOUR_PASSWORD;TrustServerCertificate=True;"
+
+# Windows PowerShell
+$env:ConnectionStrings__DefaultConnection="Server=YOUR_SERVER;Database=DataChat;User Id=sa;Password=YOUR_PASSWORD;TrustServerCertificate=True;"
+
+# Windows Command Prompt
+set ConnectionStrings__DefaultConnection=Server=YOUR_SERVER;Database=DataChat;User Id=sa;Password=YOUR_PASSWORD;TrustServerCertificate=True;
+```
+
+**Option B: appsettings.json (Development Only)**
+
+For local development, you can edit `src/Presentation/DataChat.Web/appsettings.json`:
 
 ```json
 {
@@ -84,6 +101,8 @@ Edit `src/Presentation/DataChat.Web/appsettings.json`:
   }
 }
 ```
+
+> **Security Note:** Never commit credentials to source control. The default `appsettings.json` ships with an empty connection string to prevent accidental credential exposure.
 
 **For Windows Authentication:**
 ```json

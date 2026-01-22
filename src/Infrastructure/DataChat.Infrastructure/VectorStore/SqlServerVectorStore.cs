@@ -79,10 +79,18 @@ public class SqlServerVectorStore : IVectorStore
         // Convert embedding to SQL Server vector format
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("G9"))) + "]";
 
+        // Build parameterized IN clause to prevent SQL injection
         var dataSourceFilterList = dataSourceFilter?.ToList();
-        var filterClause = dataSourceFilterList?.Any() == true
-            ? $"AND d.DataSourceId IN ({string.Join(",", dataSourceFilterList.Select(id => $"'{id}'"))})"
-            : "";
+        var filterClause = "";
+        var filterParams = new List<SqlParameter>();
+
+        if (dataSourceFilterList?.Any() == true)
+        {
+            var paramNames = dataSourceFilterList.Select((_, i) => $"@ds{i}").ToList();
+            filterClause = $"AND d.DataSourceId IN ({string.Join(",", paramNames)})";
+            filterParams.AddRange(dataSourceFilterList.Select((id, i) =>
+                new SqlParameter($"@ds{i}", id)));
+        }
 
         // SQL Server 2025 vector search query using VECTOR_DISTANCE with DiskANN index
         var sql = $@"
@@ -107,6 +115,12 @@ public class SqlServerVectorStore : IVectorStore
         await using var command = new SqlCommand(sql, connection);
         command.Parameters.AddWithValue("@TopK", topK);
         command.Parameters.AddWithValue("@QueryVector", vectorString);
+
+        // Add data source filter parameters
+        foreach (var param in filterParams)
+        {
+            command.Parameters.Add(param);
+        }
 
         try
         {
@@ -157,10 +171,18 @@ public class SqlServerVectorStore : IVectorStore
         string connectionString,
         CancellationToken cancellationToken)
     {
+        // Build parameterized IN clause to prevent SQL injection
         var dataSourceFilterList = dataSourceFilter?.ToList();
-        var filterClause = dataSourceFilterList?.Any() == true
-            ? $"AND d.DataSourceId IN ({string.Join(",", dataSourceFilterList.Select(id => $"'{id}'"))})"
-            : "";
+        var filterClause = "";
+        var filterParams = new List<SqlParameter>();
+
+        if (dataSourceFilterList?.Any() == true)
+        {
+            var paramNames = dataSourceFilterList.Select((_, i) => $"@ds{i}").ToList();
+            filterClause = $"AND d.DataSourceId IN ({string.Join(",", paramNames)})";
+            filterParams.AddRange(dataSourceFilterList.Select((id, i) =>
+                new SqlParameter($"@ds{i}", id)));
+        }
 
         // Fetch embeddings as text and convert back to float arrays
         var sql = $@"
@@ -182,6 +204,12 @@ public class SqlServerVectorStore : IVectorStore
         await connection.OpenAsync(cancellationToken);
 
         await using var command = new SqlCommand(sql, connection);
+
+        // Add data source filter parameters
+        foreach (var param in filterParams)
+        {
+            command.Parameters.Add(param);
+        }
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
