@@ -120,30 +120,39 @@ cd src/Presentation/DataChat.Web
 dotnet run
 ```
 
-The application will:
-- Automatically create the database if it doesn't exist
-- Run all EF Core migrations
-- Start on `http://localhost:5159`
+The application will start on `http://localhost:5159`.
 
-### 4. Initial Setup
+### 4. Initial Setup (Setup Wizard)
 
-1. **Create Admin Account**
+On first run, DataChat automatically detects that setup is needed and redirects you to the **Setup Wizard**. The wizard guides you through three steps:
 
-   Navigate to `http://localhost:5159/api/setup-admin` to set the admin password.
+1. **Database Connection**
+   - Enter your SQL Server connection details (server, database, credentials)
+   - Click **Test Connection** to verify connectivity
+   - The database will be created automatically if it doesn't exist
+   - Click **Save & Continue**
 
-   Default credentials:
-   - Username: `admin`
-   - Password: (set via the setup endpoint)
+2. **Apply Migrations**
+   - Review the pending database migrations
+   - Click **Apply Migrations** to create the database schema
+   - Progress is displayed in real-time
 
-2. **Configure AI Provider**
+3. **Create Admin Account**
+   - Enter a username, display name, and password for the administrator account
+   - Click **Create Admin & Finish**
 
-   - Log in as admin
-   - Go to **Admin > Configuration > AI Settings**
-   - Select your LLM Provider (OpenAI, Azure OpenAI, or Ollama)
-   - Enter the required credentials for your provider
-   - Click **Test & Save Settings** to verify the configuration
+After setup completes, you'll be redirected to the login page.
 
-   The Status tab will show green indicators when everything is configured correctly.
+### 5. Configure AI Provider
+
+After logging in as admin:
+
+1. Go to **Admin > Configuration > AI Settings**
+2. Select your LLM Provider (OpenAI, Azure OpenAI, or Ollama)
+3. Enter the required credentials for your provider
+4. Click **Test & Save Settings** to verify the configuration
+
+The Status tab will show green indicators when everything is configured correctly.
 
 ## Setting Up Example Data
 
@@ -493,6 +502,66 @@ You can override settings with environment variables:
 export ConnectionStrings__DefaultConnection="Server=...;Database=...;"
 ```
 
+### Docker
+
+DataChat includes Docker support for containerized deployments.
+
+#### Quick Start with Docker Compose
+
+The easiest way to run DataChat with Docker is using `docker-compose.yml`, which sets up both the application and SQL Server:
+
+```bash
+# Start DataChat and SQL Server
+docker-compose up -d
+
+# View logs
+docker-compose logs -f datachat
+```
+
+The application will be available at `http://localhost:8080`. On first run, the Setup Wizard will guide you through configuration.
+
+#### Docker Compose Configuration
+
+The default `docker-compose.yml` includes:
+- **DataChat** on port 8080
+- **SQL Server 2022** on port 1433
+
+To use an external SQL Server instead, set the connection string environment variable:
+
+```yaml
+services:
+  datachat:
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=your-server;Database=DataChat;User Id=sa;Password=YourPassword;TrustServerCertificate=True;
+```
+
+#### Building the Docker Image
+
+```bash
+# Build the image
+docker build -t datachat:latest .
+
+# Run standalone (requires external SQL Server)
+docker run -d -p 8080:8080 \
+  -e ConnectionStrings__DefaultConnection="Server=host.docker.internal;Database=DataChat;User Id=sa;Password=YourPassword;TrustServerCertificate=True;" \
+  datachat:latest
+```
+
+#### Environment Variables for Docker
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ConnectionStrings__DefaultConnection` | SQL Server connection string | (empty - triggers Setup Wizard) |
+| `ASPNETCORE_ENVIRONMENT` | Runtime environment | Production |
+| `Setup__Enabled` | Enable Setup Wizard | true |
+
+#### Health Check
+
+The container includes a health check endpoint at `/health`:
+```bash
+curl http://localhost:8080/health
+```
+
 ---
 
 ## Deploying to IIS
@@ -671,12 +740,12 @@ Create the `logs` folder and grant write permissions to the app pool identity.
 |----------|--------|-------------|
 | `/api/login` | POST | Authenticate user |
 | `/logout` | GET | Sign out |
-| `/api/setup-admin` | GET | Reset admin password |
-| `/api/auth-test` | GET | Debug auth state |
+| `/health` | GET | Health check endpoint |
+| `/setup` | GET | Setup wizard (only available during initial setup) |
 
 ## Security Considerations
 
-1. **Change default admin password immediately** after deployment
+1. **Complete the Setup Wizard** on first run to configure your database and create an admin account
 2. **Use HTTPS** in production
 3. **Secure your OpenAI API key** - it's encrypted in the database
 4. **Regular backups** - chat history and documents are stored in the database
