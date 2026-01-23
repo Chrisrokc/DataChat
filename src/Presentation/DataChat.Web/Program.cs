@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using DataChat.Application;
 using DataChat.Application.Common.Interfaces;
 using DataChat.Infrastructure;
+using DataChat.Infrastructure.Persistence;
 using DataChat.Web.Authentication;
 using DataChat.Web.Components;
 using DataChat.Web.HealthChecks;
@@ -15,7 +16,9 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.FluentUI.AspNetCore.Components;
 using Serilog;
@@ -27,6 +30,39 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
+    // Configure graceful shutdown
+    builder.Services.Configure<HostOptions>(options =>
+    {
+        options.ShutdownTimeout = TimeSpan.FromSeconds(30);
+    });
+
+    // Configure Kestrel with request limits and optional HTTPS
+    builder.WebHost.ConfigureKestrel((context, options) =>
+    {
+        // Request limits
+        options.Limits.MaxRequestBodySize = 100 * 1024 * 1024; // 100MB for file uploads
+        options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
+
+        // Optional HTTPS configuration for standalone/Docker deployments
+        // When behind IIS or a reverse proxy, these are not needed
+        var certPath = Environment.GetEnvironmentVariable("HTTPS_CERTIFICATE_PATH");
+        var certPassword = Environment.GetEnvironmentVariable("HTTPS_CERTIFICATE_PASSWORD");
+
+        if (!string.IsNullOrEmpty(certPath) && File.Exists(certPath))
+        {
+            var httpPort = int.Parse(Environment.GetEnvironmentVariable("HTTP_PORT") ?? "8080");
+            var httpsPort = int.Parse(Environment.GetEnvironmentVariable("HTTPS_PORT") ?? "8081");
+
+            options.ListenAnyIP(httpPort); // HTTP
+            options.ListenAnyIP(httpsPort, listenOptions =>
+            {
+                listenOptions.UseHttps(certPath, certPassword);
+            });
+
+            Log.Information("Kestrel configured with HTTPS on port {HttpsPort}", httpsPort);
+        }
+    });
 
     // Configure Serilog
     builder.Host.UseSerilog((context, services, configuration) => configuration
@@ -75,6 +111,27 @@ try
             config.SegmentsPerWindow = 6;
             config.PermitLimit = 100;
         });
+    });
+
+    // Response compression for better performance
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+        options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+        {
+            "application/javascript",
+            "application/json",
+            "text/css",
+            "text/html",
+            "text/plain"
+        });
+    });
+
+    builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+    {
+        options.Level = System.IO.Compression.CompressionLevel.Fastest;
     });
 
     // Add HttpContextAccessor for Blazor
@@ -217,14 +274,38 @@ try
 
     var app = builder.Build();
 
+    // Apply pending migrations automatically in non-Development environments
+    // Or when APPLY_MIGRATIONS=true environment variable is set
+    if (!app.Environment.IsDevelopment() ||
+        Environment.GetEnvironmentVariable("APPLY_MIGRATIONS") == "true")
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+        try
+        {
+            migrationLogger.LogInformation("Applying database migrations...");
+            dbContext.Database.Migrate();
+            migrationLogger.LogInformation("Database migrations completed successfully");
+        }
+        catch (Exception ex)
+        {
+            migrationLogger.LogError(ex, "Failed to apply database migrations");
+            throw; // Fail fast if migrations fail
+        }
+    }
+
     // Configure the HTTP request pipeline.
     if (!app.Environment.IsDevelopment())
     {
         app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        app.UseStatusCodePagesWithReExecute("/error/{0}");
         app.UseHsts();
     }
 
     app.UseHttpsRedirection();
+    app.UseResponseCompression();
 
     // Add security headers to all responses
     app.UseSecurityHeaders();
@@ -236,15 +317,18 @@ try
 
     app.UseAuthentication();
 
-    // Debug middleware to check auth state after authentication middleware
-    app.Use(async (context, next) =>
+    // Debug middleware to check auth state after authentication middleware (development only)
+    if (app.Environment.IsDevelopment())
     {
-        Log.Information("After UseAuthentication - Path: {Path}, IsAuthenticated: {IsAuth}, User: {User}",
-            context.Request.Path,
-            context.User?.Identity?.IsAuthenticated ?? false,
-            context.User?.Identity?.Name ?? "null");
-        await next();
-    });
+        app.Use(async (context, next) =>
+        {
+            Log.Debug("After UseAuthentication - Path: {Path}, IsAuthenticated: {IsAuth}, User: {User}",
+                context.Request.Path,
+                context.User?.Identity?.IsAuthenticated ?? false,
+                context.User?.Identity?.Name ?? "null");
+            await next();
+        });
+    }
 
     // Windows Auth domain validation middleware
     if ((authMode == "Windows" || windowsAuthEnabled) && !string.IsNullOrEmpty(windowsAuthAllowedDomains))
@@ -601,6 +685,15 @@ try
 
     app.MapRazorComponents<App>()
         .AddInteractiveServerRenderMode();
+
+    // Log application lifecycle events
+    var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+    lifetime.ApplicationStarted.Register(() =>
+        Log.Information("Application started. Press Ctrl+C to shut down."));
+    lifetime.ApplicationStopping.Register(() =>
+        Log.Information("Application is shutting down..."));
+    lifetime.ApplicationStopped.Register(() =>
+        Log.Information("Application has stopped."));
 
     Log.Information("Application starting up");
     app.Run();

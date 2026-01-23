@@ -1,0 +1,66 @@
+# DataChat Docker Compose Configuration
+# Usage: docker-compose up -d
+
+services:
+  datachat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datachat-web
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=sql;Database=DataChat;User Id=sa;Password=${SQL_SA_PASSWORD:-YourStrong@Passw0rd};TrustServerCertificate=True;MultipleActiveResultSets=true
+      - APPLY_MIGRATIONS=true
+      # Optional HTTPS configuration (uncomment to enable)
+      # - HTTPS_CERTIFICATE_PATH=/app/certs/datachat.pfx
+      # - HTTPS_CERTIFICATE_PASSWORD=YourCertPassword
+      # - HTTP_PORT=8080
+      # - HTTPS_PORT=8081
+    volumes:
+      - datachat-keys:/app/data-protection-keys
+      - datachat-logs:/app/logs
+      - datachat-uploads:/app/uploads
+      # Mount certificate for HTTPS (uncomment if using)
+      # - ./certs:/app/certs:ro
+    depends_on:
+      sql:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: datachat-sql
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SQL_SA_PASSWORD:-YourStrong@Passw0rd}
+      - MSSQL_PID=Express
+    volumes:
+      - datachat-sqldata:/var/opt/mssql
+    restart: unless-stopped
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "${SQL_SA_PASSWORD:-YourStrong@Passw0rd}" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  datachat-keys:
+    driver: local
+  datachat-logs:
+    driver: local
+  datachat-uploads:
+    driver: local
+  datachat-sqldata:
+    driver: local

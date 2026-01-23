@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vs
+.vscode
+.idea
+*.user
+*.suo
+
+# Build outputs
+**/bin
+**/obj
+**/out
+
+# Test results
+**/TestResults
+
+# Logs
+**/logs
+*.log
+
+# Local development
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# Docker
+**/Dockerfile*
+**/docker-compose*
+**/.dockerignore
+
+# Documentation
+*.md
+!README.md
+LICENSE
+
+# Certificates (don't include in build context)
+**/certs
+*.pfx
+*.pem
+*.crt
+*.key
+
+# Scripts
+**/scripts
+
+# Misc
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
