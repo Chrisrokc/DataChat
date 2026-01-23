@@ -11,19 +11,13 @@ namespace DataChat.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "CanSelectDataSources",
-                table: "Users",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.UpdateData(
-                table: "Users",
-                keyColumn: "Id",
-                keyValue: new Guid("00000000-0000-0000-0000-000000000001"),
-                column: "CanSelectDataSources",
-                value: false);
+            // Check if column already exists before adding
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Users') AND name = 'CanSelectDataSources')
+                BEGIN
+                    ALTER TABLE [Users] ADD [CanSelectDataSources] bit NOT NULL DEFAULT 0;
+                END
+            ");
         }
 
         /// <inheritdoc />

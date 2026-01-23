@@ -1,0 +1,668 @@
+@page "/setup"
+@using DataChat.Web.Services.Setup
+@using DataChat.Infrastructure.Persistence
+@using DataChat.Application.Common.Interfaces
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject ISetupStateService SetupStateService
+@inject IConnectionStringService ConnectionService
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+@inject IServiceProvider ServiceProvider
+@inject ILogger<Setup> Logger
+@layout DataChat.Web.Components.Layout.SetupLayout
+
+<PageTitle>DataChat Setup</PageTitle>
+
+<div class="setup-container">
+    <FluentCard class="setup-card">
+        <div class="setup-header">
+            <FluentIcon Value="@(new Icons.Regular.Size48.Database())" Color="Color.Accent" />
+            <h1>DataChat Setup</h1>
+            <p class="setup-subtitle">@GetSubtitleForState()</p>
+        </div>
+
+        @if (!_tokenValid && !_setupComplete)
+        {
+            <FluentMessageBar Intent="MessageIntent.Error" Title="Access Denied">
+                Invalid or missing setup token. This page is only accessible during initial setup.
+                <br /><br />
+                If you need to run setup again, please restart the application.
+            </FluentMessageBar>
+        }
+        else if (_setupComplete)
+        {
+            <div class="setup-complete">
+                <FluentIcon Value="@(new Icons.Regular.Size48.CheckmarkCircle())" Color="Color.Success" />
+                <h2>Setup Complete!</h2>
+                <p>DataChat has been configured successfully.</p>
+                <FluentButton Appearance="Appearance.Accent" OnClick="@GoToLogin">
+                    Go to Login
+                </FluentButton>
+            </div>
+        }
+        else
+        {
+            <!-- Current State Indicator -->
+            <div class="status-indicator @GetStateClass()">
+                <FluentIcon Value="@GetStateIcon()" />
+                <span>@GetStateMessage()</span>
+            </div>
+
+            <!-- Step 1: Connection String Configuration -->
+            @if (_currentStep == SetupStep.Connection)
+            {
+                <div class="step-content">
+                    <h3>Step 1: Database Connection</h3>
+                    <p>Enter your SQL Server connection details below.</p>
+
+                    <div class="connection-form">
+                        <FluentTextField @bind-Value="_parameters.Server"
+                                        Label="Server"
+                                        Placeholder="localhost or server.database.windows.net"
+                                        Required="true"
+                                        Style="width: 100%;" />
+
+                        <FluentTextField @bind-Value="_parameters.Database"
+                                        Label="Database Name"
+                                        Placeholder="DataChat"
+                                        Required="true"
+                                        Style="width: 100%;" />
+
+                        <FluentCheckbox @bind-Value="_parameters.IntegratedSecurity"
+                                       Label="Use Windows Authentication" />
+
+                        @if (!_parameters.IntegratedSecurity)
+                        {
+                            <div class="form-row">
+                                <FluentTextField @bind-Value="_parameters.Username"
+                                                Label="Username"
+                                                Placeholder="sa"
+                                                Style="width: 100%;" />
+
+                                <FluentTextField @bind-Value="_parameters.Password"
+                                                Label="Password"
+                                                TextFieldType="TextFieldType.Password"
+                                                Style="width: 100%;" />
+                            </div>
+                        }
+
+                        <FluentCheckbox @bind-Value="_parameters.TrustServerCertificate"
+                                       Label="Trust Server Certificate (recommended for local/development)" />
+                    </div>
+
+                    @if (_testResult != null)
+                    {
+                        @if (_testResult.Success)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Success" Style="margin-top: 1rem;">
+                                <strong>Connection successful!</strong><br />
+                                Server version: @_testResult.ServerVersion<br />
+                                Database exists: @(_testResult.DatabaseExists ? "Yes" : "No (will be created)")
+                            </FluentMessageBar>
+                        }
+                        else
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error" Title="Connection Failed" Style="margin-top: 1rem;">
+                                @_testResult.ErrorMessage
+                            </FluentMessageBar>
+                        }
+                    }
+
+                    <div class="button-row">
+                        <FluentButton Appearance="Appearance.Outline"
+                                     OnClick="@TestConnection"
+                                     Loading="_testingConnection">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.PlugConnected())" Slot="start" />
+                            Test Connection
+                        </FluentButton>
+
+                        <FluentButton Appearance="Appearance.Accent"
+                                     OnClick="@SaveAndProceed"
+                                     Disabled="@(!_connectionTested)"
+                                     Loading="_saving">
+                            Save & Continue
+                            <FluentIcon Value="@(new Icons.Regular.Size16.ArrowRight())" Slot="end" />
+                        </FluentButton>
+                    </div>
+                </div>
+            }
+
+            <!-- Step 2: Apply Migrations -->
+            @if (_currentStep == SetupStep.Migrations)
+            {
+                <div class="step-content">
+                    <h3>Step 2: Database Setup</h3>
+                    <p>Create the database schema by applying migrations.</p>
+
+                    @if (_pendingMigrations.Any())
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Info" Style="margin-bottom: 1rem;">
+                            @_pendingMigrations.Count migration(s) will be applied to create the database schema.
+                        </FluentMessageBar>
+                    }
+
+                    @if (_migrationLog.Any())
+                    {
+                        <div class="migration-log">
+                            <ul>
+                                @foreach (var entry in _migrationLog)
+                                {
+                                    <li class="@(entry.StartsWith("✓") ? "success" : "pending")">@entry</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    @if (_migrationError != null)
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Error" Title="Migration Failed" Style="margin-top: 1rem;">
+                            @_migrationError
+                        </FluentMessageBar>
+                    }
+
+                    <div class="button-row">
+                        <FluentButton Appearance="Appearance.Outline"
+                                     OnClick="@(() => _currentStep = SetupStep.Connection)">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.ArrowLeft())" Slot="start" />
+                            Back
+                        </FluentButton>
+
+                        @if (!_migrationsApplied)
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                         OnClick="@ApplyMigrations"
+                                         Loading="_applyingMigrations">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.DatabaseArrowUp())" Slot="start" />
+                                Apply Migrations
+                            </FluentButton>
+                        }
+                        else
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                         OnClick="@(() => _currentStep = SetupStep.AdminUser)">
+                                Continue
+                                <FluentIcon Value="@(new Icons.Regular.Size16.ArrowRight())" Slot="end" />
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Step 3: Create Admin User -->
+            @if (_currentStep == SetupStep.AdminUser)
+            {
+                <div class="step-content">
+                    <h3>Step 3: Create Admin Account</h3>
+                    <p>Create the initial administrator account.</p>
+
+                    <div class="connection-form">
+                        <FluentTextField @bind-Value="_adminUsername"
+                                        Label="Username"
+                                        Placeholder="admin"
+                                        Required="true"
+                                        Style="width: 100%;" />
+
+                        <FluentTextField @bind-Value="_adminDisplayName"
+                                        Label="Display Name"
+                                        Placeholder="Administrator"
+                                        Required="true"
+                                        Style="width: 100%;" />
+
+                        <FluentTextField @bind-Value="_adminPassword"
+                                        Label="Password"
+                                        TextFieldType="TextFieldType.Password"
+                                        Required="true"
+                                        Style="width: 100%;" />
+
+                        <FluentTextField @bind-Value="_adminPasswordConfirm"
+                                        Label="Confirm Password"
+                                        TextFieldType="TextFieldType.Password"
+                                        Required="true"
+                                        Style="width: 100%;" />
+                    </div>
+
+                    @if (_adminError != null)
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Error" Style="margin-top: 1rem;">
+                            @_adminError
+                        </FluentMessageBar>
+                    }
+
+                    <div class="button-row">
+                        <FluentButton Appearance="Appearance.Outline"
+                                     OnClick="@(() => _currentStep = SetupStep.Migrations)">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.ArrowLeft())" Slot="start" />
+                            Back
+                        </FluentButton>
+
+                        <FluentButton Appearance="Appearance.Accent"
+                                     OnClick="@CreateAdminUser"
+                                     Loading="_creatingAdmin">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.PersonAdd())" Slot="start" />
+                            Create Admin & Finish
+                        </FluentButton>
+                    </div>
+                </div>
+            }
+        }
+    </FluentCard>
+</div>
+
+@code {
+    private enum SetupStep { Connection, Migrations, AdminUser }
+
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    [SupplyParameterFromQuery(Name = "state")]
+    public string? InitialState { get; set; }
+
+    private bool _tokenValid;
+    private bool _setupComplete;
+    private SetupState _currentState = SetupState.ConnectionStringMissing;
+    private SetupStep _currentStep = SetupStep.Connection;
+
+    // Connection step
+    private ConnectionStringParameters _parameters = new();
+    private ConnectionTestResult? _testResult;
+    private bool _testingConnection;
+    private bool _connectionTested;
+    private bool _saving;
+
+    // Migration step
+    private List<string> _pendingMigrations = new();
+    private List<string> _migrationLog = new();
+    private bool _applyingMigrations;
+    private bool _migrationsApplied;
+    private string? _migrationError;
+
+    // Admin user step
+    private string _adminUsername = "admin";
+    private string _adminDisplayName = "Administrator";
+    private string _adminPassword = string.Empty;
+    private string _adminPasswordConfirm = string.Empty;
+    private bool _creatingAdmin;
+    private string? _adminError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check current setup state
+        _currentState = await SetupStateService.GetCurrentStateAsync();
+
+        if (_currentState == SetupState.Complete)
+        {
+            _setupComplete = true;
+            return;
+        }
+
+        // Validate token
+        _tokenValid = !string.IsNullOrEmpty(Token) && SetupStateService.ValidateSetupToken(Token);
+
+        if (!_tokenValid)
+        {
+            return;
+        }
+
+        // Parse initial state if provided
+        if (Enum.TryParse<SetupState>(InitialState, out var state))
+        {
+            _currentState = state;
+        }
+
+        // Pre-fill existing connection string if available
+        var existingConnectionString = Configuration.GetConnectionString("DefaultConnection");
+        if (!string.IsNullOrEmpty(existingConnectionString))
+        {
+            _parameters = ConnectionService.ParseConnectionString(existingConnectionString);
+        }
+
+        // Determine starting step based on state
+        _currentStep = _currentState switch
+        {
+            SetupState.ConnectionStringMissing => SetupStep.Connection,
+            SetupState.DatabaseUnreachable => SetupStep.Connection,
+            SetupState.MigrationsNeeded => SetupStep.Migrations,
+            SetupState.AdminUserNeeded => SetupStep.AdminUser,
+            _ => SetupStep.Connection
+        };
+
+        // If we're past connection, mark it as tested
+        if (_currentStep != SetupStep.Connection)
+        {
+            _connectionTested = true;
+        }
+
+        // If we're at migrations step, check for pending migrations
+        if (_currentStep == SetupStep.Migrations)
+        {
+            await LoadPendingMigrations();
+        }
+
+        // If we're at admin step, migrations are done
+        if (_currentStep == SetupStep.AdminUser)
+        {
+            _migrationsApplied = true;
+        }
+    }
+
+    private string GetSubtitleForState()
+    {
+        return _currentState switch
+        {
+            SetupState.ConnectionStringMissing => "Let's configure your database connection",
+            SetupState.DatabaseUnreachable => "Database connection needs attention",
+            SetupState.MigrationsNeeded => "Database schema needs to be created",
+            SetupState.AdminUserNeeded => "Create your administrator account",
+            _ => "Configure DataChat"
+        };
+    }
+
+    private string GetStateClass()
+    {
+        return _currentState switch
+        {
+            SetupState.Complete => "success",
+            SetupState.ConnectionStringMissing => "info",
+            SetupState.DatabaseUnreachable => "error",
+            SetupState.MigrationsNeeded => "warning",
+            SetupState.AdminUserNeeded => "warning",
+            _ => "info"
+        };
+    }
+
+    private Icon GetStateIcon()
+    {
+        return _currentState switch
+        {
+            SetupState.Complete => new Icons.Regular.Size20.CheckmarkCircle(),
+            SetupState.ConnectionStringMissing => new Icons.Regular.Size20.Info(),
+            SetupState.DatabaseUnreachable => new Icons.Regular.Size20.ErrorCircle(),
+            SetupState.MigrationsNeeded => new Icons.Regular.Size20.Warning(),
+            SetupState.AdminUserNeeded => new Icons.Regular.Size20.Person(),
+            _ => new Icons.Regular.Size20.Info()
+        };
+    }
+
+    private string GetStateMessage()
+    {
+        return _currentState switch
+        {
+            SetupState.Complete => "Setup is complete",
+            SetupState.ConnectionStringMissing => "Database connection not configured",
+            SetupState.DatabaseUnreachable => "Cannot connect to database",
+            SetupState.MigrationsNeeded => "Database schema not initialized",
+            SetupState.AdminUserNeeded => "Administrator account needed",
+            _ => "Setup required"
+        };
+    }
+
+    private async Task TestConnection()
+    {
+        _testingConnection = true;
+        _testResult = null;
+        StateHasChanged();
+
+        try
+        {
+            _testResult = await ConnectionService.TestConnectionAsync(_parameters);
+            _connectionTested = _testResult.Success;
+
+            if (_testResult.Success)
+            {
+                ToastService.ShowSuccess("Connection test successful!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Connection test failed unexpectedly");
+            _testResult = new ConnectionTestResult
+            {
+                Success = false,
+                ErrorMessage = "An unexpected error occurred while testing the connection."
+            };
+        }
+        finally
+        {
+            _testingConnection = false;
+        }
+    }
+
+    private async Task SaveAndProceed()
+    {
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var connectionString = ConnectionService.BuildConnectionString(_parameters);
+
+            // Save connection string
+            var saved = await ConnectionService.SaveConnectionStringAsync(connectionString);
+            if (!saved)
+            {
+                ToastService.ShowError("Failed to save connection string. Check application permissions.");
+                return;
+            }
+
+            // Create database if it doesn't exist
+            if (_testResult != null && !_testResult.DatabaseExists)
+            {
+                var (success, error) = await ConnectionService.EnsureDatabaseExistsAsync(connectionString);
+                if (!success)
+                {
+                    ToastService.ShowError($"Failed to create database: {error}");
+                    return;
+                }
+                ToastService.ShowSuccess("Database created successfully!");
+            }
+
+            // Clear state cache and reload
+            SetupStateService.ClearCache();
+
+            // Load pending migrations and move to next step
+            await LoadPendingMigrations();
+            _currentStep = SetupStep.Migrations;
+
+            ToastService.ShowSuccess("Connection saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save connection");
+            ToastService.ShowError("Failed to save connection settings.");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task LoadPendingMigrations()
+    {
+        try
+        {
+            using var scope = ServiceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var pending = await dbContext.Database.GetPendingMigrationsAsync();
+            _pendingMigrations = pending.ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load pending migrations");
+            _pendingMigrations = new List<string> { "(Unable to determine pending migrations)" };
+        }
+    }
+
+    private async Task ApplyMigrations()
+    {
+        _applyingMigrations = true;
+        _migrationError = null;
+        _migrationLog.Clear();
+        StateHasChanged();
+
+        try
+        {
+            using var scope = ServiceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            _migrationLog.Add("Starting migrations...");
+            StateHasChanged();
+
+            // Get list of migrations to apply
+            var pending = (await dbContext.Database.GetPendingMigrationsAsync()).ToList();
+
+            foreach (var migration in pending)
+            {
+                _migrationLog.Add($"Applying: {migration}");
+                StateHasChanged();
+                await Task.Delay(100); // Small delay to show progress
+            }
+
+            // Apply all migrations
+            await dbContext.Database.MigrateAsync();
+
+            foreach (var migration in pending)
+            {
+                var index = _migrationLog.FindIndex(m => m.Contains(migration));
+                if (index >= 0)
+                {
+                    _migrationLog[index] = $"✓ {migration}";
+                }
+            }
+
+            _migrationLog.Add("✓ All migrations applied successfully!");
+            _migrationsApplied = true;
+
+            // Clear state cache
+            SetupStateService.ClearCache();
+
+            ToastService.ShowSuccess("Database schema created successfully!");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Migration failed");
+            _migrationError = $"Migration failed: {ex.Message}";
+            _migrationLog.Add($"✗ Error: {ex.Message}");
+        }
+        finally
+        {
+            _applyingMigrations = false;
+        }
+    }
+
+    private async Task CreateAdminUser()
+    {
+        _adminError = null;
+
+        // Validation
+        if (string.IsNullOrWhiteSpace(_adminUsername))
+        {
+            _adminError = "Username is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_adminDisplayName))
+        {
+            _adminError = "Display name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_adminPassword))
+        {
+            _adminError = "Password is required.";
+            return;
+        }
+
+        if (_adminPassword.Length < 6)
+        {
+            _adminError = "Password must be at least 6 characters.";
+            return;
+        }
+
+        if (_adminPassword != _adminPasswordConfirm)
+        {
+            _adminError = "Passwords do not match.";
+            return;
+        }
+
+        _creatingAdmin = true;
+        StateHasChanged();
+
+        try
+        {
+            using var scope = ServiceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var authService = scope.ServiceProvider.GetRequiredService<IAuthenticationService>();
+
+            // Check if user already exists
+            var existingUser = await dbContext.Users
+                .FirstOrDefaultAsync(u => u.Username.ToLower() == _adminUsername.ToLower());
+
+            if (existingUser != null)
+            {
+                _adminError = "A user with this username already exists.";
+                return;
+            }
+
+            // Get or create Admin role
+            var adminRole = await dbContext.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
+            if (adminRole == null)
+            {
+                adminRole = new DataChat.Domain.Entities.Role
+                {
+                    Name = "Admin",
+                    CreatedAt = DateTime.UtcNow
+                };
+                dbContext.Roles.Add(adminRole);
+                await dbContext.SaveChangesAsync(); // Save to get the generated Id
+            }
+
+            // Create admin user
+            var adminUser = new DataChat.Domain.Entities.User
+            {
+                Id = Guid.NewGuid(),
+                Username = _adminUsername,
+                DisplayName = _adminDisplayName,
+                PasswordHash = authService.HashPassword(_adminPassword),
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Add user role relationship
+            adminUser.UserRoles.Add(new DataChat.Domain.Entities.UserRole
+            {
+                UserId = adminUser.Id,
+                RoleId = adminRole.Id,
+                AssignedAt = DateTime.UtcNow,
+                AssignedBy = "Setup"
+            });
+
+            dbContext.Users.Add(adminUser);
+            await dbContext.SaveChangesAsync();
+
+            Logger.LogInformation("Admin user '{Username}' created successfully", _adminUsername);
+
+            // Invalidate setup token
+            SetupStateService.InvalidateSetupToken();
+            SetupStateService.ClearCache();
+
+            _setupComplete = true;
+            ToastService.ShowSuccess("Admin account created! Setup is complete.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create admin user");
+            _adminError = $"Failed to create admin user: {ex.Message}";
+        }
+        finally
+        {
+            _creatingAdmin = false;
+        }
+    }
+
+    private void GoToLogin()
+    {
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

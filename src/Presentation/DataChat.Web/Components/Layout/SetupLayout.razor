@@ -1,0 +1,151 @@
+@inherits LayoutComponentBase
+@using Microsoft.FluentUI.AspNetCore.Components
+
+<FluentLayout>
+    <FluentMain>
+        <div class="setup-layout">
+            @Body
+        </div>
+    </FluentMain>
+</FluentLayout>
+
+<style>
+    .setup-layout {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        background: linear-gradient(135deg, var(--neutral-layer-1) 0%, var(--neutral-layer-2) 100%);
+        padding: 2rem;
+        padding-top: 5vh;
+    }
+
+    .setup-container {
+        max-width: 700px;
+        width: 100%;
+    }
+
+    .setup-card {
+        padding: 2rem;
+        border-radius: 8px;
+    }
+
+    .setup-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .setup-header h1 {
+        margin: 0.5rem 0;
+        font-size: 1.75rem;
+        font-weight: 600;
+    }
+
+    .setup-subtitle {
+        color: var(--neutral-foreground-hint);
+        margin-top: 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    .step-content {
+        padding: 1rem 0;
+    }
+
+    .step-content p {
+        color: var(--neutral-foreground-hint);
+        margin-bottom: 1.5rem;
+    }
+
+    .connection-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .form-row > * {
+        flex: 1;
+    }
+
+    .migration-log {
+        background: var(--neutral-layer-2);
+        padding: 1rem;
+        border-radius: 4px;
+        font-family: 'Cascadia Code', 'Consolas', monospace;
+        font-size: 0.85rem;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    .migration-log ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .migration-log li {
+        padding: 0.25rem 0;
+        border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+    }
+
+    .migration-log li:last-child {
+        border-bottom: none;
+    }
+
+    .migration-log .success {
+        color: var(--accent-foreground-rest);
+    }
+
+    .migration-log .pending {
+        color: var(--neutral-foreground-hint);
+    }
+
+    .setup-complete {
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .setup-complete h2 {
+        margin: 1rem 0;
+        color: var(--accent-foreground-rest);
+    }
+
+    .button-row {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+    }
+
+    .status-indicator.info {
+        background: var(--neutral-layer-2);
+        border: 1px solid var(--neutral-stroke-rest);
+    }
+
+    .status-indicator.success {
+        background: rgba(16, 124, 16, 0.1);
+        border: 1px solid rgba(16, 124, 16, 0.3);
+    }
+
+    .status-indicator.warning {
+        background: rgba(255, 185, 0, 0.1);
+        border: 1px solid rgba(255, 185, 0, 0.3);
+    }
+
+    .status-indicator.error {
+        background: rgba(196, 43, 28, 0.1);
+        border: 1px solid rgba(196, 43, 28, 0.3);
+    }
+</style>

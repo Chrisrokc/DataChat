@@ -9,6 +9,7 @@ using DataChat.Web.Components;
 using DataChat.Web.HealthChecks;
 using DataChat.Web.Hubs;
 using DataChat.Web.Middleware;
+using DataChat.Web.Services.Setup;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
@@ -75,6 +76,10 @@ try
     // Add Application and Infrastructure layers
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Add Setup services for first-run configuration
+    builder.Services.AddScoped<ISetupStateService, SetupStateService>();
+    builder.Services.AddScoped<IConnectionStringService, ConnectionStringService>();
 
     // Add FluentUI
     builder.Services.AddFluentUIComponents();
@@ -274,26 +279,39 @@ try
 
     var app = builder.Build();
 
-    // Apply pending migrations automatically in non-Development environments
-    // Or when APPLY_MIGRATIONS=true environment variable is set
-    if (!app.Environment.IsDevelopment() ||
-        Environment.GetEnvironmentVariable("APPLY_MIGRATIONS") == "true")
-    {
-        using var scope = app.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    // Check if setup is required - only run auto-migrations when setup is complete
+    // This prevents crashes on first run when connection string is empty
+    var setupEnabled = builder.Configuration.GetValue<bool>("Setup:Enabled", true);
+    var dbConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var setupRequired = string.IsNullOrWhiteSpace(dbConnectionString);
 
-        try
+    if (!setupRequired && !setupEnabled)
+    {
+        // Apply pending migrations automatically in non-Development environments
+        // Or when APPLY_MIGRATIONS=true environment variable is set
+        if (!app.Environment.IsDevelopment() ||
+            Environment.GetEnvironmentVariable("APPLY_MIGRATIONS") == "true")
         {
-            migrationLogger.LogInformation("Applying database migrations...");
-            dbContext.Database.Migrate();
-            migrationLogger.LogInformation("Database migrations completed successfully");
+            using var scope = app.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+            try
+            {
+                migrationLogger.LogInformation("Applying database migrations...");
+                dbContext.Database.Migrate();
+                migrationLogger.LogInformation("Database migrations completed successfully");
+            }
+            catch (Exception ex)
+            {
+                migrationLogger.LogError(ex, "Failed to apply database migrations");
+                throw; // Fail fast if migrations fail
+            }
         }
-        catch (Exception ex)
-        {
-            migrationLogger.LogError(ex, "Failed to apply database migrations");
-            throw; // Fail fast if migrations fail
-        }
+    }
+    else if (setupRequired)
+    {
+        Log.Warning("Database connection string not configured. Setup wizard will be shown.");
     }
 
     // Configure the HTTP request pipeline.
@@ -314,6 +332,12 @@ try
     app.UseCorrelationId();
 
     app.UseStaticFiles();
+
+    // Setup middleware - redirects to setup wizard when database setup is needed
+    if (setupEnabled)
+    {
+        app.UseSetupRequired();
+    }
 
     app.UseAuthentication();
 
