@@ -1,0 +1,122 @@
+#!/bin/bash
+# Postinstall:
+#   1. Symlink the right arch binary to /Applications/DataChat/DataChat.Web
+#   2. Ask the user (via osascript) whether to run a local Docker SQL Server 2025
+#      or point at an existing server — wire connection string accordingly.
+#   3. Load the LaunchAgent so the service starts now and on every login.
+#   4. Open the browser to the Setup Wizard.
+#
+# Runs as root. Use launchctl asuser $UID + sudo -u $CONSOLE_USER to act as the
+# logged-in user where needed.
+set -eu
+
+APP_DIR="/Applications/DataChat"
+LOG_DIR="$APP_DIR/logs"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/install.log"
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
+
+CONSOLE_USER="$(stat -f '%Su' /dev/console)"
+USER_ID="$(id -u "$CONSOLE_USER")"
+USER_HOME="$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+[ -z "$USER_HOME" ] && USER_HOME="/Users/$CONSOLE_USER"
+
+log "postinstall starting (user=$CONSOLE_USER uid=$USER_ID home=$USER_HOME)"
+
+# ---------- 1. Arch symlink ----------
+ARCH="$(uname -m)"
+if [ "$ARCH" = "arm64" ]; then
+    SRC="$APP_DIR/bin/osx-arm64/DataChat.Web"
+else
+    SRC="$APP_DIR/bin/osx-x64/DataChat.Web"
+fi
+ln -sf "$SRC" "$APP_DIR/DataChat.Web"
+chmod +x "$SRC"
+log "Symlinked $SRC -> $APP_DIR/DataChat.Web"
+
+# Writable support dirs
+mkdir -p "$APP_DIR/uploads" "$APP_DIR/data-protection-keys"
+chown -R "$CONSOLE_USER" "$APP_DIR/logs" "$APP_DIR/uploads" "$APP_DIR/data-protection-keys"
+
+# ---------- 2. Database choice dialog ----------
+SETTINGS="$APP_DIR/appsettings.Production.json"
+
+ask_db_mode() {
+    sudo -u "$CONSOLE_USER" osascript <<'APPLESCRIPT' 2>/dev/null || echo "existing"
+        set choice to button returned of (display dialog ¬
+            "DataChat needs SQL Server 2025 (VECTOR type).
+
+Choose how to connect:" buttons {"Use existing SQL Server", "Local Docker SQL Server"} default button 1 with title "DataChat setup")
+        if choice is "Local Docker SQL Server" then
+            return "bundled"
+        else
+            return "existing"
+        end if
+APPLESCRIPT
+}
+
+DB_MODE="$(ask_db_mode | tr -d '[:space:]')"
+log "DB_MODE=$DB_MODE"
+
+CONN_STRING=""
+if [ "$DB_MODE" = "bundled" ]; then
+    if ! command -v docker >/dev/null 2>&1; then
+        log "Docker not found — user must install Docker Desktop, then re-run installer or use Setup Wizard"
+        sudo -u "$CONSOLE_USER" osascript -e 'display dialog "Docker was not found. Install Docker Desktop from https://www.docker.com/products/docker-desktop/ and re-run this installer, or configure an existing SQL Server in the Setup Wizard." with title "DataChat" buttons {"OK"} default button 1' >/dev/null 2>&1 || true
+    else
+        COMPOSE="$APP_DIR/sqlserver/docker-compose.yml"
+        mkdir -p "$APP_DIR/sqlserver"
+        SA_PASSWORD="DataChat$(openssl rand -hex 6)!"
+        cat > "$COMPOSE" <<EOF
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    container_name: datachat-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "$SA_PASSWORD"
+    ports:
+      - "1433:1433"
+    volumes:
+      - datachat-mssql-data:/var/opt/mssql
+    restart: unless-stopped
+volumes:
+  datachat-mssql-data:
+EOF
+        chown -R "$CONSOLE_USER" "$APP_DIR/sqlserver"
+        log "Starting bundled SQL Server 2025 via docker-compose"
+        sudo -u "$CONSOLE_USER" docker compose -f "$COMPOSE" up -d >>"$LOG" 2>&1 || log "docker compose up failed — Setup Wizard can retry"
+        CONN_STRING="Server=localhost,1433;Database=DataChat;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True;"
+    fi
+fi
+
+# Write appsettings.Production.json — either pre-filled or empty (Setup Wizard takes over)
+python3 - "$SETTINGS" "$CONN_STRING" <<'PY'
+import json, os, sys
+path, conn = sys.argv[1], sys.argv[2]
+data = {}
+if os.path.exists(path):
+    try: data = json.load(open(path))
+    except Exception: data = {}
+data.setdefault("ConnectionStrings", {})
+data["ConnectionStrings"]["DefaultConnection"] = conn
+data["Urls"] = "http://localhost:5159"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+PY
+chown "$CONSOLE_USER" "$SETTINGS"
+log "Wrote $SETTINGS (connection ${CONN_STRING:+configured}${CONN_STRING:-empty — Setup Wizard will prompt})"
+
+# ---------- 3. Load LaunchAgent ----------
+AGENT="/Library/LaunchAgents/com.datachat.app.plist"
+chown root:wheel "$AGENT"
+chmod 644 "$AGENT"
+launchctl asuser "$USER_ID" launchctl bootstrap "gui/$USER_ID" "$AGENT" 2>>"$LOG" || \
+  launchctl asuser "$USER_ID" launchctl load "$AGENT" 2>>"$LOG" || \
+  log "Failed to load LaunchAgent — user can launch via /Applications/DataChat/DataChat.Web"
+
+# ---------- 4. Open browser ----------
+( sleep 5 && sudo -u "$CONSOLE_USER" open "http://localhost:5159" ) >/dev/null 2>&1 &
+
+log "postinstall complete"
+exit 0

@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.FluentUI.AspNetCore.Components;
 using Serilog;
 
@@ -30,7 +31,15 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    // When launched as a Windows Service, the working directory is System32.
+    // Anchor it to the binary location so relative paths (logs, data-protection-keys) resolve.
+    if (WindowsServiceHelpers.IsWindowsService())
+    {
+        Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+    }
+
     var builder = WebApplication.CreateBuilder(args);
+    builder.Host.UseWindowsService();
 
     // Configure graceful shutdown
     builder.Services.Configure<HostOptions>(options =>

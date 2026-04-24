@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>DataChat</title>
+    <organization>com.datachat</organization>
+    <options customize="never" require-scripts="true" hostArchitectures="arm64,x86_64"/>
+    <welcome    file="welcome.html"    mime-type="text/html"/>
+    <license    file="license.html"    mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="11.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.datachat.app"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.datachat.app" visible="false">
+        <pkg-ref id="com.datachat.app"/>
+    </choice>
+    <pkg-ref id="com.datachat.app" version="1.0.0" onConclusion="none">DataChat-component.pkg</pkg-ref>
+</installer-gui-script>

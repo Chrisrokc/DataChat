@@ -1,0 +1,15 @@
+#!/bin/bash
+# Preinstall: stop any running DataChat agent before overwriting its binaries.
+set -eu
+
+CONSOLE_USER="$(stat -f '%Su' /dev/console)"
+USER_ID="$(id -u "$CONSOLE_USER" 2>/dev/null || echo '')"
+
+if [ -n "$USER_ID" ] && [ "$USER_ID" != "0" ]; then
+    launchctl asuser "$USER_ID" launchctl bootout "gui/$USER_ID/com.datachat.app" 2>/dev/null || true
+fi
+
+# Legacy cleanup paths from older installs
+[ -f "/Library/LaunchAgents/com.datachat.app.plist" ] && rm -f "/Library/LaunchAgents/com.datachat.app.plist" || true
+
+exit 0

@@ -64,6 +64,24 @@ Before you begin, ensure you have the following installed:
   - [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service)
   - [Ollama](https://ollama.ai/) (for local/self-hosted models)
 
+## Installers (Windows & macOS)
+
+If you just want to run DataChat locally, prebuilt installers are the fastest path — no .NET SDK required on the target machine. Each installer bundles a self-contained publish, registers DataChat as a background service (Windows Service / macOS LaunchAgent), and opens the first-run Setup Wizard in your browser.
+
+| Platform | Artifact | Notes |
+|----------|----------|-------|
+| Windows 10/11 (x64) | `DataChat-Setup-<ver>-x64.exe` | Installs as a Windows Service; optional firewall rule for TCP 5159 |
+| macOS 11+ (Apple Silicon & Intel) | `DataChat-Installer-<ver>.pkg` | Loads a LaunchAgent; launches at login |
+
+**During install, you'll be asked about the database:**
+
+- *Bundled local SQL Server 2025* — Windows: downloads & silently installs SQL Server 2025 Express. macOS: starts SQL Server 2025 in Docker (requires Docker Desktop).
+- *Connect to existing SQL Server* — installer leaves the connection string blank; the Setup Wizard prompts you on first launch.
+
+Builds are unsigned in this pass, so expect a SmartScreen "More info → Run anyway" (Windows) or right-click → Open (macOS) on first launch.
+
+See [installer/README.md](installer/README.md) for how to build the installers from source (`build/publish.sh` + Inno Setup on Windows, `build-pkg.sh` on macOS).
+
 ## Quick Start
 
 ### 1. Clone the Repository
