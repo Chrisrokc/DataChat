@@ -32,6 +32,10 @@
     <dict>
         <key>ASPNETCORE_ENVIRONMENT</key>
         <string>Production</string>
+        <!-- So the Tesseract NuGet wrapper can dlopen Homebrew-installed
+             libtesseract.dylib on both Apple Silicon and Intel Macs. -->
+        <key>DYLD_FALLBACK_LIBRARY_PATH</key>
+        <string>/opt/homebrew/lib:/usr/local/lib:/usr/lib</string>
     </dict>
 </dict>
 </plist>

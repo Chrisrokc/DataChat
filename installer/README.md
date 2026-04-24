@@ -32,7 +32,9 @@ What the `.exe` does on a user's machine:
 1. EULA + destination folder picker.
 2. Custom page asking **bundled SQL Express** vs **existing SQL Server**.
 3. Copies the self-contained publish to `C:\Program Files\DataChat`.
-4. Runs `postinstall.ps1` to write `appsettings.Production.json` (connection string depends on choice).
+4. Runs `postinstall.ps1` to:
+   - Download `eng.traineddata` (~4 MB, `tessdata_fast`) into `<InstallDir>\tessdata\` for OCR. Native Tesseract DLLs are already bundled by the Tesseract NuGet package via self-contained publish.
+   - Write `appsettings.Production.json` (connection string depends on the SQL choice).
 5. Registers a `DataChat` Windows Service with `sc.exe` and starts it.
 6. Optionally opens TCP 5159 in Windows Firewall.
 7. Opens the browser to `http://localhost:5159` → the existing Setup Wizard takes over.
@@ -54,11 +56,12 @@ What the `.pkg` does on a user's machine:
 1. Welcome + MIT license + conclusion screens (HTML in `resources/`).
 2. Copies both arch binaries to `/Applications/DataChat/bin/{osx-arm64,osx-x64}`.
 3. `postinstall` picks the right arch, symlinks it to `/Applications/DataChat/DataChat.Web`.
-4. Prompts (via `osascript`) for **local Docker SQL Server** or **existing server**.
+4. Installs Tesseract OCR — `brew install tesseract` if Homebrew is present (warns the user otherwise) — and downloads `eng.traineddata` to `/Applications/DataChat/tessdata/`. The LaunchAgent sets `DYLD_FALLBACK_LIBRARY_PATH` to `/opt/homebrew/lib:/usr/local/lib` so the .NET Tesseract wrapper can find `libtesseract.dylib` on both Apple Silicon and Intel.
+5. Prompts (via `osascript`) for **local Docker SQL Server** or **existing server**.
    - Local: writes a `docker-compose.yml` + random SA password; brings it up with `docker compose up -d`.
    - Existing: leaves connection string empty — the Setup Wizard prompts on first launch.
-5. Loads the LaunchAgent (`/Library/LaunchAgents/com.datachat.app.plist`) so the app starts on login.
-6. Opens the browser to `http://localhost:5159`.
+6. Loads the LaunchAgent (`/Library/LaunchAgents/com.datachat.app.plist`) so the app starts on login.
+7. Opens the browser to `http://localhost:5159`.
 
 Uninstall via `/Applications/DataChat/uninstall.command` (double-click).
 

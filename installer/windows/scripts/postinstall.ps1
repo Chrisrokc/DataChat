@@ -31,6 +31,28 @@ function Write-Log($msg) {
 
 Write-Log "postinstall starting (DbMode=$DbMode, HttpPort=$HttpPort, InstallDir=$InstallDir)"
 
+# ---------- Tesseract OCR data ----------
+# The Tesseract NuGet package ships the Windows native DLLs alongside the binary,
+# but the language model file (eng.traineddata) must be downloaded separately.
+# ImageParser.cs looks for it in <InstallDir>\tessdata\.
+$tessDir = Join-Path $InstallDir 'tessdata'
+$tessFile = Join-Path $tessDir 'eng.traineddata'
+if (-not (Test-Path $tessFile)) {
+    try {
+        New-Item -ItemType Directory -Path $tessDir -Force | Out-Null
+        # tessdata_fast: ~4MB, recommended speed/accuracy balance.
+        # Swap for tessdata (full, ~23MB) or tessdata_best for higher accuracy.
+        $tessUrl = 'https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata'
+        Write-Log "Downloading Tesseract English model from $tessUrl"
+        Invoke-WebRequest -Uri $tessUrl -OutFile $tessFile -UseBasicParsing
+        Write-Log "Tesseract data installed at $tessFile"
+    } catch {
+        Write-Log "Tesseract data download failed: $($_.Exception.Message). OCR for image documents will be disabled."
+    }
+} else {
+    Write-Log "Tesseract data already present at $tessFile (skipping)"
+}
+
 $settingsPath = Join-Path $InstallDir 'appsettings.Production.json'
 if (Test-Path $settingsPath) {
     try { $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json } catch { $settings = [pscustomobject]@{} }

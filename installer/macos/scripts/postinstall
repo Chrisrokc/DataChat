@@ -38,6 +38,38 @@ log "Symlinked $SRC -> $APP_DIR/DataChat.Web"
 mkdir -p "$APP_DIR/uploads" "$APP_DIR/data-protection-keys"
 chown -R "$CONSOLE_USER" "$APP_DIR/logs" "$APP_DIR/uploads" "$APP_DIR/data-protection-keys"
 
+# ---------- Tesseract OCR ----------
+# macOS needs both the system libtesseract.dylib (via Homebrew, not in the NuGet
+# package) and the eng.traineddata model file in <APP_DIR>/tessdata/.
+TESS_DIR="$APP_DIR/tessdata"
+mkdir -p "$TESS_DIR"
+
+BREW_BIN=""
+for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$candidate" ] && BREW_BIN="$candidate" && break
+done
+
+if [ -n "$BREW_BIN" ]; then
+    if ! sudo -u "$CONSOLE_USER" "$BREW_BIN" list tesseract >/dev/null 2>&1; then
+        log "Installing tesseract via Homebrew ($BREW_BIN install tesseract)"
+        sudo -u "$CONSOLE_USER" "$BREW_BIN" install tesseract >>"$LOG" 2>&1 || \
+            log "brew install tesseract failed — OCR for images will be disabled"
+    else
+        log "tesseract already present in Homebrew"
+    fi
+else
+    log "Homebrew not found — skipping tesseract install. User can run: brew install tesseract"
+    sudo -u "$CONSOLE_USER" osascript -e 'display dialog "Tesseract OCR is required for scanning image documents. Install Homebrew (https://brew.sh) then run: brew install tesseract" with title "DataChat" buttons {"OK"} default button 1' >/dev/null 2>&1 || true
+fi
+
+if [ ! -f "$TESS_DIR/eng.traineddata" ]; then
+    log "Downloading Tesseract English model"
+    curl -fsSL -o "$TESS_DIR/eng.traineddata" \
+        "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata" >>"$LOG" 2>&1 || \
+        log "tessdata download failed — OCR for images will be disabled"
+fi
+chown -R "$CONSOLE_USER" "$TESS_DIR"
+
 # ---------- 2. Database choice dialog ----------
 SETTINGS="$APP_DIR/appsettings.Production.json"
 

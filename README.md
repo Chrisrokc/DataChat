@@ -78,6 +78,8 @@ If you just want to run DataChat locally, prebuilt installers are the fastest pa
 - *Bundled local SQL Server 2025* — Windows: downloads & silently installs SQL Server 2025 Express. macOS: starts SQL Server 2025 in Docker (requires Docker Desktop).
 - *Connect to existing SQL Server* — installer leaves the connection string blank; the Setup Wizard prompts you on first launch.
 
+The installers also handle **Tesseract OCR** (used to extract text from scanned/image documents) — Windows ships the native DLLs via the Tesseract NuGet package and the installer downloads the English language model. macOS uses `brew install tesseract` plus the same model download; if Homebrew isn't installed, you'll get a dialog with the install command and can re-run setup later.
+
 Builds are unsigned in this pass, so expect a SmartScreen "More info → Run anyway" (Windows) or right-click → Open (macOS) on first launch.
 
 See [installer/README.md](installer/README.md) for how to build the installers from source (`build/publish.sh` + Inno Setup on Windows, `build-pkg.sh` on macOS).
