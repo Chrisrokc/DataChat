@@ -73,8 +73,8 @@ $settings.Urls = "http://localhost:$HttpPort"
 
 if ($DbMode -eq 'bundled') {
     Write-Log "Bundled DB selected — attempting SQL Server 2025 Express install"
-    $sqlExe = Join-Path $env:TEMP 'SQLEXPR_x64_ENU.exe'
-    $downloadUrl = 'https://go.microsoft.com/fwlink/?linkid=866658'  # SQL Server Express download bootstrapper
+    $sqlExe = Join-Path $env:TEMP 'SQL2025-SSEI-Expr.exe'
+    $downloadUrl = 'https://aka.ms/sql2025express'  # SQL Server 2025 Express bootstrapper
     try {
         if (-not (Test-Path $sqlExe)) {
             Write-Log "Downloading SQL Server Express bootstrapper to $sqlExe"
